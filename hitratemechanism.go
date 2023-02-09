@@ -38,11 +38,13 @@ type redis struct {
 }
 
 type hiteRateData struct {
-	TTLKeyCheck   int64
-	countHitRate  int64
-	TTLKeyHitRate int64
-	HighTraffic   bool
-	RPS           int64
+	TTLKeyCheck    int64
+	countHitRate   int64
+	TTLKeyHitRate  int64
+	MaxDateTTL     time.Time
+	HaveMaxDateTTL bool
+	HighTraffic    bool
+	RPS            int64
 }
 
 func init() {
@@ -248,9 +250,28 @@ func (r *redis) hitRateGetData(conn redigo.Conn, keyCheck, keyHitrate string) (r
 	conn.Send("TTL", keyCheck)                     // 1
 	conn.Send("HINCRBY", keyHitrate, "count", "1") // 2
 	conn.Send("TTL", keyHitrate)                   // 3
+	conn.Send("HMGET", keyHitrate, "end_time")     // 4
 	conn.Flush()
 	resultResponse := make(map[int]int64)
-	for i := 1; i <= 3; i++ {
+	for i := 1; i <= 4; i++ {
+		if i == 4 {
+			resultKey, err := redigo.String(conn.Receive())
+			if err != nil {
+				log.Println("err", err)
+				continue
+			}
+			if resultKey == "" {
+				result.HaveMaxDateTTL = false
+				continue
+			}
+			endTime, err := time.Parse("2006-01-02 15:04:05", resultKey)
+			if err != nil {
+				log.Println("err", err)
+				continue
+			}
+			result.MaxDateTTL = endTime
+			result.HaveMaxDateTTL = true
+		}
 		resultKey, err := redigo.Int64(conn.Receive())
 		if err != nil {
 			log.Println("err", err)
@@ -265,6 +286,16 @@ func (r *redis) hitRateGetData(conn redigo.Conn, keyCheck, keyHitrate string) (r
 	return
 }
 
+func (r *redis) SetMaxTTLChecker(dbname, prefix, keyCheck string, endTime time.Time) error {
+	conn := r.getConnection(dbname)
+	if conn == nil {
+		return fmt.Errorf("failed to obtain connection db %s", dbname)
+	}
+	defer conn.Close()
+	conn.Send("HMSET", fmt.Sprintf("%s-%s", prefix, keyCheck), "end_time", endTime.Format("2006-01-02 15:04:05"))
+	err := conn.Flush()
+	return err
+}
 func calculateRPS(countHit int64) (rps int64) {
 	rps = int64(countHit / 60)
 	return
