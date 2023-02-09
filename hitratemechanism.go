@@ -193,7 +193,7 @@ func (r *redis) HmsetWithExpMultiple(dbname string, data map[string]map[string]i
 	conn.Flush()
 	return
 }
-func (r *redis) CustomHitRate(dbname, prefix, keyCheck string) (highTraffic bool, err error) {
+func (r *redis) CustomHitRate(dbname, prefix, keyCheck string, maxTimeTTL time.Time) (highTraffic bool, err error) {
 	keyHitrate := fmt.Sprintf("%s-%s", prefix, keyCheck)
 	conn := r.getConnection(dbname)
 	if conn == nil {
@@ -209,28 +209,22 @@ func (r *redis) CustomHitRate(dbname, prefix, keyCheck string) (highTraffic bool
 	cmds := []cmdAddTTl{}
 	// if checker key hitrate dont have ttl, will set expire for 1 minute
 	// or key hitrate under 30 seconds, will set expire for 1 minute
-	if hitRateData.TTLKeyHitRate > int64(-3) || hitRateData.TTLKeyHitRate <= int64(30) {
+	if hitRateData.TTLKeyHitRate > int64(-3) && hitRateData.TTLKeyHitRate <= int64(30) {
 		fmt.Println("add ttl check hit rate")
 		cmds = append(cmds, cmdAddTTl{command: "EXPIRE", key: keyHitrate, expire: 60})
 	}
-	// calculate base on hit rate
-	// simple calculation
-	// Request per second (rps) 20
-	// Request per minute (rpm) 191.04
-	if hitRateData.RPS <= int64(20) && len(cmds) == 0 {
-		// do nothing if calculation is not pass for add expire on keycheck
-		return false, nil
+	newTTL := calculateNewTTL(hitRateData.TTLKeyCheck, int64(60), int64(300), maxTimeTTL)
+
+	if hitRateData.RPS > int64(20) {
+		highTraffic = true
+		if newTTL > 0 {
+			log.Println("add TTL redis")
+			cmds = append(cmds, cmdAddTTl{command: "EXPIRE", key: keyCheck, expire: newTTL})
+			// add ttl redis key target
+		} else {
+			log.Println("no need add TTL redis")
+		}
 	}
-	// expected hit rate > 20 RPS
-	// check ttl key check is greater than 300 seconds
-	newTTL := 60 + hitRateData.TTLKeyCheck
-	highTraffic = true
-	if newTTL > 300 {
-		fmt.Println("no need add ttl because still long")
-	} else {
-		cmds = append(cmds, cmdAddTTl{command: "EXPIRE", key: keyCheck, expire: newTTL})
-	}
-	// add ttl redis key target
 
 	if len(cmds) > 0 {
 		log.Println("run cmds")
@@ -255,12 +249,11 @@ func (r *redis) hitRateGetData(conn redigo.Conn, keyCheck, keyHitrate string) (r
 	conn.Send("HINCRBY", keyHitrate, "count", "1") // 2
 	conn.Send("TTL", keyHitrate)                   // 3
 	conn.Flush()
-	resultResponse := []int64{}
+	resultResponse := make(map[int]int64)
 	for i := 1; i <= 3; i++ {
 		resultKey, err := redigo.Int64(conn.Receive())
 		if err != nil {
 			log.Println("err", err)
-			continue
 		}
 		resultResponse[i] = resultKey
 	}
@@ -268,10 +261,25 @@ func (r *redis) hitRateGetData(conn redigo.Conn, keyCheck, keyHitrate string) (r
 	result.countHitRate = resultResponse[2]
 	result.TTLKeyHitRate = resultResponse[3]
 	result.RPS = calculateRPS(result.countHitRate)
+	log.Printf("%+v\n", result)
 	return
 }
 
 func calculateRPS(countHit int64) (rps int64) {
 	rps = int64(countHit / 60)
+	return
+}
+
+func calculateNewTTL(TTLKeyCHeck, extendTTL, limitTTL int64, dateMax time.Time) (newTTL int64) {
+	maxTTL := int64(dateMax.Sub(time.Now()) / time.Second)
+	newTTL = int64(60) + TTLKeyCHeck
+	if newTTL > limitTTL {
+		newTTL = 0
+		return
+	}
+	if newTTL > maxTTL {
+		newTTL = maxTTL
+		return
+	}
 	return
 }
