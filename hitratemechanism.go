@@ -3,9 +3,9 @@ package HitRateMechanism
 import (
 	"fmt"
 	"log"
-	"strconv"
 	"time"
 
+	"github.com/eapache/go-resiliency/breaker"
 	redigo "github.com/garyburd/redigo/redis"
 	cmap "github.com/orcaman/concurrent-map"
 )
@@ -35,6 +35,14 @@ type config struct {
 
 type redis struct {
 	DBs cmap.ConcurrentMap
+}
+
+type hiteRateData struct {
+	TTLKeyCheck   int64
+	countHitRate  int64
+	TTLKeyHitRate int64
+	HighTraffic   bool
+	RPS           int64
 }
 
 func init() {
@@ -83,7 +91,7 @@ func New(hostName, hostAddress, network string, customOption ...Options) {
 	}
 	hosts.Set(hostName, cfg)
 }
-unc (r *redis) getConnection(dbname string) redigo.Conn {
+func (r *redis) getConnection(dbname string) redigo.Conn {
 	var rdsConn redigo.Conn
 
 	circuitbreaker, cbOk := breakerCmap.Get(dbname)
@@ -161,68 +169,23 @@ func (r *redis) GetConnection(dbname string) redigo.Conn {
 	return r.getConnection(dbname)
 }
 
-func (r *redis) SetexMultiple(dbname string, data map[string]string, expired int) (res map[string]string, err error) {
-	res = make(map[string]string)
-	expString := fmt.Sprintf("%d", expired)
-	conn := r.getConnection(dbname)
-	if conn == nil {
-		return res, fmt.Errorf("Failed to obtain connection db %s key %+v", dbname, data)
-	}
-	defer conn.Close()
-	for key, val := range data {
-		conn.Send("SETEX", key, val, expString)
-	}
-	conn.Flush()
-	for key, _ := range data {
-		resultKey, err := redigo.String(conn.Receive())
-		if err != nil {
-			continue
-		}
-		res[key] = resultKey
-	}
-	return
-}
-
 func (r *redis) CustomHitRate(dbname, prefix, keyCheck string) (highTraffic bool, err error) {
 	keyHitrate := fmt.Sprintf("%s-%s", prefix, keyCheck)
-	resultResponse := make(map[int]int64)
 	conn := r.getConnection(dbname)
 	if conn == nil {
 		return false, fmt.Errorf("Failed to obtain connection db %s", dbname)
 	}
 	defer conn.Close()
-	conn.Send("TTL", keyCheck)                     // 1
-	conn.Send("HINCRBY", keyHitrate, "count", "1") // 2
-	conn.Send("TTL", keyHitrate)                   // 3
-	conn.Send("HMGET", keyHitrate, "hightraffic")  // 4 // bisa di hapus karena dari response HINCRBY udah dapet.
-	conn.Flush()
-	for i := 1; i <= 4; i++ {
-		if i == 4 {
-
-			resp, err := redigo.Strings(conn.Receive())
-			if err != nil {
-				log.Println("err", err)
-				continue
-			}
-			log.Printf("temp: %+v ", resp)
-			highTraffic, _ = strconv.ParseBool(resp[0])
-			continue
-		}
-		resultKey, err := redigo.Int64(conn.Receive())
-		if err != nil {
-			log.Println("err", err)
-			continue
-		}
-		resultResponse[i] = resultKey
-	}
+	hitRateData, _ := r.hitRateGetData(conn, keyCheck, keyHitrate)
 	type cmdAddTTl struct {
 		command string
 		key     string
 		expire  int64
 	}
 	cmds := []cmdAddTTl{}
-	if resultResponse[3] > int64(-3) && resultResponse[3] <= int64(30) {
-		// if checker key dont have ttl, will set expire for 1 minutes
+	// if checker key hitrate dont have ttl, will set expire for 1 minute
+	// or key hitrate under 30 seconds, will set expire for 1 minute
+	if hitRateData.TTLKeyHitRate > int64(-3) || hitRateData.TTLKeyHitRate <= int64(30) {
 		fmt.Println("add ttl check hit rate")
 		cmds = append(cmds, cmdAddTTl{command: "EXPIRE", key: keyHitrate, expire: 60})
 	}
@@ -230,22 +193,18 @@ func (r *redis) CustomHitRate(dbname, prefix, keyCheck string) (highTraffic bool
 	// simple calculation
 	// Request per second (rps) 20
 	// Request per minute (rpm) 191.04
-	if resultResponse[2] <= int64(190) && len(cmds) == 0 {
+	if hitRateData.RPS <= int64(20) && len(cmds) == 0 {
 		// do nothing if calculation is not pass for add expire on keycheck
 		return false, nil
 	}
 	// expected hit rate > 20 RPS
 	// check ttl key check is greater than 300 seconds
-	newTTL := 60 + resultResponse[1]
-	log.Println("HIGHTRAFFIC:", highTraffic)
-	if newTTL > 300 || resultResponse[2] <= int64(190) {
+	newTTL := 60 + hitRateData.TTLKeyCheck
+	highTraffic = true
+	if newTTL > 300 {
 		fmt.Println("no need add ttl because still long")
-	} else if resultResponse[2] > int64(190) && !highTraffic {
-		highTraffic = true
-		err := conn.Send("HMSET", keyHitrate, "hightraffic", strconv.FormatBool(highTraffic))
-		if err != nil {
-			log.Println("Failed conn.Send", err)
-		}
+	} else {
+		cmds = append(cmds, cmdAddTTl{command: "EXPIRE", key: keyCheck, expire: newTTL})
 	}
 	// add ttl redis key target
 
@@ -265,4 +224,30 @@ func (r *redis) CustomHitRate(dbname, prefix, keyCheck string) (highTraffic bool
 		log.Println("Failed conn.Flush", err)
 	}
 	return highTraffic, nil
+}
+
+func (r *redis) hitRateGetData(conn redigo.Conn, keyCheck, keyHitrate string) (result hiteRateData, err error) {
+	conn.Send("TTL", keyCheck)                     // 1
+	conn.Send("HINCRBY", keyHitrate, "count", "1") // 2
+	conn.Send("TTL", keyHitrate)                   // 3
+	conn.Flush()
+	resultResponse := []int64{}
+	for i := 1; i <= 3; i++ {
+		resultKey, err := redigo.Int64(conn.Receive())
+		if err != nil {
+			log.Println("err", err)
+			continue
+		}
+		resultResponse[i] = resultKey
+	}
+	result.TTLKeyCheck = resultResponse[1]
+	result.countHitRate = resultResponse[2]
+	result.TTLKeyHitRate = resultResponse[3]
+	result.RPS = calculateRPS(result.countHitRate)
+	return
+}
+
+func calculateRPS(countHit int64) (rps int64) {
+	rps = int64(countHit / 60)
+	return
 }
