@@ -195,7 +195,7 @@ func (r *redis) HmsetWithExpMultiple(dbname string, data map[string]map[string]i
 	conn.Flush()
 	return
 }
-func (r *redis) CustomHitRate(dbname, prefix, keyCheck string, maxTimeTTL time.Time) (highTraffic bool, err error) {
+func (r *redis) CustomHitRate(dbname, prefix, keyCheck string) (highTraffic bool, err error) {
 	keyHitrate := fmt.Sprintf("%s-%s", prefix, keyCheck)
 	conn := r.getConnection(dbname)
 	if conn == nil {
