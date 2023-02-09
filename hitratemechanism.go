@@ -168,7 +168,31 @@ func (r *redis) getConnection(dbname string) redigo.Conn {
 func (r *redis) GetConnection(dbname string) redigo.Conn {
 	return r.getConnection(dbname)
 }
-
+func (r *redis) HgetAll(dbname, key string) (map[string]string, error) {
+	conn := r.getConnection(dbname)
+	defer conn.Close()
+	if conn == nil {
+		return nil, fmt.Errorf("failed get connection")
+	}
+	result, err := redigo.StringMap(conn.Do("HGETALL", key))
+	return result, err
+}
+func (r *redis) HmsetWithExpMultiple(dbname string, data map[string]map[string]interface{}, expired int) (err error) {
+	expString := fmt.Sprintf("%d", expired)
+	conn := r.getConnection(dbname)
+	if conn == nil {
+		return fmt.Errorf("Failed to obtain connection db %s key %+v", dbname, data)
+	}
+	defer conn.Close()
+	for key, hashmap := range data {
+		for f, v := range hashmap {
+			conn.Send("HMSET", key, f, v)
+		}
+		conn.Send("EXPIRE", key, expString)
+	}
+	conn.Flush()
+	return
+}
 func (r *redis) CustomHitRate(dbname, prefix, keyCheck string) (highTraffic bool, err error) {
 	keyHitrate := fmt.Sprintf("%s-%s", prefix, keyCheck)
 	conn := r.getConnection(dbname)
