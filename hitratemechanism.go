@@ -195,11 +195,11 @@ func (r *redis) HmsetWithExpMultiple(dbname string, data map[string]map[string]i
 	conn.Flush()
 	return
 }
-func (r *redis) CustomHitRate(dbname, prefix, keyCheck string) (highTraffic bool, err error) {
+func (r *redis) CustomHitRate(dbname, prefix, keyCheck string) (highTraffic, haveMaxDateTTL bool, err error) {
 	keyHitrate := fmt.Sprintf("%s-%s", prefix, keyCheck)
 	conn := r.getConnection(dbname)
 	if conn == nil {
-		return false, fmt.Errorf("Failed to obtain connection db %s", dbname)
+		return false, false, fmt.Errorf("Failed to obtain connection db %s", dbname)
 	}
 	defer conn.Close()
 	hitRateData, _ := r.hitRateGetData(conn, keyCheck, keyHitrate)
@@ -215,7 +215,7 @@ func (r *redis) CustomHitRate(dbname, prefix, keyCheck string) (highTraffic bool
 		fmt.Println("add ttl check hit rate")
 		cmds = append(cmds, cmdAddTTl{command: "EXPIRE", key: keyHitrate, expire: 60})
 	}
-	newTTL := calculateNewTTL(hitRateData.TTLKeyCheck, int64(60), int64(300), maxTimeTTL)
+	newTTL := calculateNewTTL(hitRateData.TTLKeyCheck, int64(60), int64(300), hitRateData.MaxDateTTL)
 
 	if hitRateData.RPS > int64(20) {
 		highTraffic = true
@@ -243,7 +243,7 @@ func (r *redis) CustomHitRate(dbname, prefix, keyCheck string) (highTraffic bool
 	if err != nil {
 		log.Println("Failed conn.Flush", err)
 	}
-	return highTraffic, nil
+	return highTraffic, hitRateData.HaveMaxDateTTL, nil
 }
 
 func (r *redis) hitRateGetData(conn redigo.Conn, keyCheck, keyHitrate string) (result hiteRateData, err error) {
@@ -302,7 +302,10 @@ func calculateRPS(countHit int64) (rps int64) {
 }
 
 func calculateNewTTL(TTLKeyCHeck, extendTTL, limitTTL int64, dateMax time.Time) (newTTL int64) {
-	maxTTL := int64(dateMax.Sub(time.Now()) / time.Second)
+	maxTTL := int64(300)
+	if !dateMax.IsZero() {
+		maxTTL = int64(dateMax.Sub(time.Now()) / time.Second)
+	}
 	newTTL = int64(60) + TTLKeyCHeck
 	if newTTL > limitTTL {
 		newTTL = 0
