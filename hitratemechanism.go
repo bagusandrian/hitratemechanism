@@ -257,7 +257,7 @@ func (r *redis) hitRateGetData(conn redigo.Conn, keyCheck, keyHitrate string) (r
 		if i == 4 {
 			resultKey, err := redigo.String(conn.Receive())
 			if err != nil {
-				log.Println("err", err)
+				log.Println("err redigo.String:", err)
 				continue
 			}
 			if resultKey == "" {
@@ -266,15 +266,16 @@ func (r *redis) hitRateGetData(conn redigo.Conn, keyCheck, keyHitrate string) (r
 			}
 			endTime, err := time.Parse("2006-01-02 15:04:05", resultKey)
 			if err != nil {
-				log.Println("err", err)
+				log.Println("err time.Parse:", err)
 				continue
 			}
 			result.MaxDateTTL = endTime
 			result.HaveMaxDateTTL = true
+			continue
 		}
 		resultKey, err := redigo.Int64(conn.Receive())
 		if err != nil {
-			log.Println("err", err)
+			log.Println("err redigo.Int64", err)
 		}
 		resultResponse[i] = resultKey
 	}
@@ -282,7 +283,6 @@ func (r *redis) hitRateGetData(conn redigo.Conn, keyCheck, keyHitrate string) (r
 	result.countHitRate = resultResponse[2]
 	result.TTLKeyHitRate = resultResponse[3]
 	result.RPS = calculateRPS(result.countHitRate)
-	log.Printf("%+v\n", result)
 	return
 }
 
@@ -302,11 +302,12 @@ func calculateRPS(countHit int64) (rps int64) {
 }
 
 func calculateNewTTL(TTLKeyCHeck, extendTTL, limitTTL int64, dateMax time.Time) (newTTL int64) {
+
 	maxTTL := int64(300)
 	if !dateMax.IsZero() {
 		maxTTL = int64(dateMax.Sub(time.Now()) / time.Second)
 	}
-	newTTL = int64(60) + TTLKeyCHeck
+	newTTL = extendTTL + TTLKeyCHeck
 	if newTTL > limitTTL {
 		newTTL = 0
 		return
