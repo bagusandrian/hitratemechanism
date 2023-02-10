@@ -172,10 +172,10 @@ func (r *redis) GetConnection(dbname string) redigo.Conn {
 }
 func (r *redis) HgetAll(dbname, key string) (map[string]string, error) {
 	conn := r.getConnection(dbname)
-	defer conn.Close()
 	if conn == nil {
 		return nil, fmt.Errorf("failed get connection")
 	}
+	defer conn.Close()
 	result, err := redigo.StringMap(conn.Do("HGETALL", key))
 	return result, err
 }
@@ -212,7 +212,6 @@ func (r *redis) CustomHitRate(dbname, prefix, keyCheck string) (highTraffic, hav
 	// if checker key hitrate dont have ttl, will set expire for 1 minute
 	// or key hitrate under 30 seconds, will set expire for 1 minute
 	if hitRateData.TTLKeyHitRate > int64(-3) && hitRateData.TTLKeyHitRate <= int64(30) {
-		fmt.Println("add ttl check hit rate")
 		cmds = append(cmds, cmdAddTTl{command: "EXPIRE", key: keyHitrate, expire: 60})
 	}
 	newTTL := calculateNewTTL(hitRateData.TTLKeyCheck, int64(60), int64(300), hitRateData.MaxDateTTL)
@@ -220,16 +219,12 @@ func (r *redis) CustomHitRate(dbname, prefix, keyCheck string) (highTraffic, hav
 	if hitRateData.RPS > int64(20) {
 		highTraffic = true
 		if newTTL > 0 {
-			log.Println("add TTL redis")
 			cmds = append(cmds, cmdAddTTl{command: "EXPIRE", key: keyCheck, expire: newTTL})
 			// add ttl redis key target
-		} else {
-			log.Println("no need add TTL redis")
 		}
 	}
 
 	if len(cmds) > 0 {
-		log.Println("run cmds")
 		for _, data := range cmds {
 
 			err := conn.Send(data.command, data.key, data.expire)
