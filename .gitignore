@@ -2,3 +2,4 @@ go.mod
 go.sum
 vendor/
 .vscode
+*.txt
