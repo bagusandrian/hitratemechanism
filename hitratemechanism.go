@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	Pool        redis
+	Pool        hrm
 	hosts       cmap.ConcurrentMap
 	breakerCmap cmap.ConcurrentMap
 )
@@ -33,7 +33,7 @@ type config struct {
 	Option  Options
 }
 
-type redis struct {
+type hrm struct {
 	DBs cmap.ConcurrentMap
 }
 
@@ -45,6 +45,37 @@ type hiteRateData struct {
 	HaveMaxDateTTL bool
 	HighTraffic    bool
 	RPS            int64
+}
+
+type ReqCustomHitRate struct {
+	Config       ConfigCustomHitRate
+	Threshold    ThresholdCustomHitrate
+	AttributeKey AttributeKeyhitrate
+}
+type (
+	ConfigCustomHitRate struct {
+		RedisDBName       string
+		ExtendTTLKey      int64
+		ExtendTTLKeyCheck int64
+		ParseLayoutTime   string
+	}
+	ThresholdCustomHitrate struct {
+		LimitMaxTTL         int64
+		MaxRPS              int64
+		LimitExtendTTLCheck int64
+	}
+	AttributeKeyhitrate struct {
+		KeyCheck string
+		Prefix   string
+	}
+)
+type RespCustomHitRate struct {
+	HighTraffic    bool
+	HaveMaxDateTTL bool
+	ExtendTTL      bool
+	MaxDateTTL     time.Time
+	RPS            int64
+	Err            error
 }
 
 func init() {
@@ -93,7 +124,7 @@ func New(hostName, hostAddress, network string, customOption ...Options) {
 	}
 	hosts.Set(hostName, cfg)
 }
-func (r *redis) getConnection(dbname string) redigo.Conn {
+func (r *hrm) getConnection(dbname string) redigo.Conn {
 	var rdsConn redigo.Conn
 
 	circuitbreaker, cbOk := breakerCmap.Get(dbname)
@@ -167,10 +198,10 @@ func (r *redis) getConnection(dbname string) redigo.Conn {
 
 // GetConnection return redigo.Conn which enable developers to do redis command
 // that is not commonly used (special case command, one that don't have wrapper function in this package. e.g: Exists)
-func (r *redis) GetConnection(dbname string) redigo.Conn {
+func (r *hrm) GetConnection(dbname string) redigo.Conn {
 	return r.getConnection(dbname)
 }
-func (r *redis) HgetAll(dbname, key string) (map[string]string, error) {
+func (r *hrm) HgetAll(dbname, key string) (map[string]string, error) {
 	conn := r.getConnection(dbname)
 	if conn == nil {
 		return nil, fmt.Errorf("failed get connection")
@@ -179,7 +210,7 @@ func (r *redis) HgetAll(dbname, key string) (map[string]string, error) {
 	result, err := redigo.StringMap(conn.Do("HGETALL", key))
 	return result, err
 }
-func (r *redis) HmsetWithExpMultiple(dbname string, data map[string]map[string]interface{}, expired int) (err error) {
+func (r *hrm) HmsetWithExpMultiple(dbname string, data map[string]map[string]interface{}, expired int) (err error) {
 	expString := fmt.Sprintf("%d", expired)
 	conn := r.getConnection(dbname)
 	if conn == nil {
@@ -195,14 +226,29 @@ func (r *redis) HmsetWithExpMultiple(dbname string, data map[string]map[string]i
 	conn.Flush()
 	return
 }
-func (r *redis) CustomHitRate(dbname, prefix, keyCheck string) (highTraffic, haveMaxDateTTL bool, err error) {
-	keyHitrate := fmt.Sprintf("%s-%s", prefix, keyCheck)
-	conn := r.getConnection(dbname)
+
+func (r *hrm) CustomHitRate(req ReqCustomHitRate) RespCustomHitRate {
+	// func (r *hrm) CustomHitRate(dbname, prefix, keyCheck string) (highTraffic, haveMaxDateTTL bool, err error) {
+	req, err := validateReqCustomHitRate(req)
+	if err != nil {
+		return RespCustomHitRate{
+			Err: err,
+		}
+	}
+	keyHitrate := fmt.Sprintf("%s-%s", req.AttributeKey.Prefix, req.AttributeKey.KeyCheck)
+	conn := r.getConnection(req.Config.RedisDBName)
 	if conn == nil {
-		return false, false, fmt.Errorf("Failed to obtain connection db %s", dbname)
+		return RespCustomHitRate{
+			Err: fmt.Errorf("failed to obtain connection db %s", req.Config.RedisDBName),
+		}
 	}
 	defer conn.Close()
-	hitRateData, _ := r.hitRateGetData(conn, keyCheck, keyHitrate)
+	hitRateData, err := r.hitRateGetData(conn, req.AttributeKey.KeyCheck, keyHitrate, req.Config.ParseLayoutTime)
+	if err != nil {
+		return RespCustomHitRate{
+			Err: err,
+		}
+	}
 	type cmdAddTTl struct {
 		command string
 		key     string
@@ -211,16 +257,17 @@ func (r *redis) CustomHitRate(dbname, prefix, keyCheck string) (highTraffic, hav
 	cmds := []cmdAddTTl{}
 	// if checker key hitrate dont have ttl, will set expire for 1 minute
 	// or key hitrate under 30 seconds, will set expire for 1 minute
-	if hitRateData.TTLKeyHitRate > int64(-3) && hitRateData.TTLKeyHitRate <= int64(30) {
-		cmds = append(cmds, cmdAddTTl{command: "EXPIRE", key: keyHitrate, expire: 60})
+	if hitRateData.TTLKeyHitRate > int64(-3) && hitRateData.TTLKeyHitRate <= req.Threshold.LimitExtendTTLCheck {
+		cmds = append(cmds, cmdAddTTl{command: "EXPIRE", key: keyHitrate, expire: req.Config.ExtendTTLKeyCheck})
 	}
-	newTTL := calculateNewTTL(hitRateData.TTLKeyCheck, int64(60), int64(300), hitRateData.MaxDateTTL)
-
+	newTTL := calculateNewTTL(hitRateData.TTLKeyCheck, req.Config.ExtendTTLKey, req.Threshold.LimitMaxTTL, hitRateData.MaxDateTTL)
+	resp := RespCustomHitRate{}
 	if hitRateData.RPS > int64(20) {
-		highTraffic = true
+		resp.HighTraffic = true
 		if newTTL > 0 {
-			cmds = append(cmds, cmdAddTTl{command: "EXPIRE", key: keyCheck, expire: newTTL})
 			// add ttl redis key target
+			cmds = append(cmds, cmdAddTTl{command: "EXPIRE", key: req.AttributeKey.KeyCheck, expire: newTTL})
+			resp.ExtendTTL = true
 		}
 	}
 
@@ -229,19 +276,27 @@ func (r *redis) CustomHitRate(dbname, prefix, keyCheck string) (highTraffic, hav
 
 			err := conn.Send(data.command, data.key, data.expire)
 			if err != nil {
-				log.Println("Failed conn.Send", err)
-				continue
+				return RespCustomHitRate{
+					Err: fmt.Errorf("failed conn.Send err:%+v", err),
+				}
 			}
 		}
 	}
 	err = conn.Flush()
 	if err != nil {
-		log.Println("Failed conn.Flush", err)
+		return RespCustomHitRate{
+			Err: fmt.Errorf("failed conn.Flush err:%+v", err),
+		}
 	}
-	return highTraffic, hitRateData.HaveMaxDateTTL, nil
+	if !hitRateData.MaxDateTTL.IsZero() {
+		resp.HaveMaxDateTTL = true
+		resp.MaxDateTTL = hitRateData.MaxDateTTL
+	}
+	resp.RPS = hitRateData.RPS
+	return resp
 }
 
-func (r *redis) hitRateGetData(conn redigo.Conn, keyCheck, keyHitrate string) (result hiteRateData, err error) {
+func (r *hrm) hitRateGetData(conn redigo.Conn, keyCheck, keyHitrate, parseLayoutTime string) (result hiteRateData, err error) {
 	conn.Send("TTL", keyCheck)                     // 1
 	conn.Send("HINCRBY", keyHitrate, "count", "1") // 2
 	conn.Send("TTL", keyHitrate)                   // 3
@@ -252,17 +307,14 @@ func (r *redis) hitRateGetData(conn redigo.Conn, keyCheck, keyHitrate string) (r
 		if i == 4 {
 			resultKey, err := redigo.Strings(conn.Receive())
 			if err != nil {
-				log.Println("err redigo.String:", err)
-				continue
+				return result, err
 			}
 			if resultKey[0] == "" {
-				result.HaveMaxDateTTL = false
 				continue
 			}
-			endTime, err := time.Parse("2006-01-02 15:04:05 Z0700 MST", resultKey[0])
+			endTime, err := time.Parse(parseLayoutTime, resultKey[0])
 			if err != nil {
-				log.Println("err time.Parse:", err)
-				continue
+				return result, err
 			}
 			result.MaxDateTTL = endTime
 			result.HaveMaxDateTTL = true
@@ -270,7 +322,7 @@ func (r *redis) hitRateGetData(conn redigo.Conn, keyCheck, keyHitrate string) (r
 		}
 		resultKey, err := redigo.Int64(conn.Receive())
 		if err != nil {
-			log.Println("err redigo.Int64", err)
+			return result, err
 		}
 		resultResponse[i] = resultKey
 	}
@@ -281,7 +333,7 @@ func (r *redis) hitRateGetData(conn redigo.Conn, keyCheck, keyHitrate string) (r
 	return
 }
 
-func (r *redis) SetMaxTTLChecker(dbname, prefix, keyCheck string, endTime time.Time) error {
+func (r *hrm) SetMaxTTLChecker(dbname, prefix, keyCheck string, endTime time.Time) error {
 	conn := r.getConnection(dbname)
 	if conn == nil {
 		return fmt.Errorf("failed to obtain connection db %s", dbname)
@@ -297,7 +349,7 @@ func calculateRPS(countHit int64) (rps int64) {
 }
 
 func calculateNewTTL(TTLKeyCHeck, extendTTL, limitTTL int64, dateMax time.Time) (newTTL int64) {
-	maxTTL := int64(300)
+	maxTTL := int64(limitTTL)
 	if !dateMax.IsZero() {
 		maxTTL = int64(dateMax.Sub(time.Now()) / time.Second)
 	}
@@ -311,4 +363,35 @@ func calculateNewTTL(TTLKeyCHeck, extendTTL, limitTTL int64, dateMax time.Time) 
 		return
 	}
 	return
+}
+
+func validateReqCustomHitRate(req ReqCustomHitRate) (ReqCustomHitRate, error) {
+	if req.Config.RedisDBName == "" {
+		return req, fmt.Errorf("empty redisDBName config")
+	}
+	if req.Config.ParseLayoutTime == "" {
+		return req, fmt.Errorf("empty layout format for parse time")
+	}
+	if req.Threshold.MaxRPS == 0 {
+		return req, fmt.Errorf("empty threshold maxRPS")
+	}
+	if req.AttributeKey.KeyCheck == "" {
+		return req, fmt.Errorf("empty key check")
+	}
+	if req.AttributeKey.Prefix == "" {
+		return req, fmt.Errorf("empty prefix")
+	}
+	if req.Config.ExtendTTLKey == 0 {
+		req.Config.ExtendTTLKey = 60
+	}
+	if req.Config.ExtendTTLKeyCheck == 0 {
+		req.Config.ExtendTTLKeyCheck = 60
+	}
+	if req.Threshold.LimitExtendTTLCheck == 0 {
+		req.Threshold.LimitExtendTTLCheck = 30
+	}
+	if req.Threshold.LimitMaxTTL == 0 {
+		req.Threshold.LimitMaxTTL = 300
+	}
+	return req, nil
 }
