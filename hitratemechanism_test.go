@@ -34,15 +34,13 @@ func BenchmarkCustomHitRate(b *testing.B) {
 		b.Run(fmt.Sprintf("benchmark CustomHitRate %d", i), func(b *testing.B) {
 			req := ReqCustomHitRate{
 				Config: ConfigCustomHitRate{
-					RedisDBName:       "local",
-					ExtendTTLKey:      60,
-					ExtendTTLKeyCheck: 60,
-					ParseLayoutTime:   "2006-01-02 15:04:05 Z0700 MST",
+					RedisDBName:     "local",
+					ExtendTTLKey:    60,
+					ParseLayoutTime: "2006-01-02 15:04:05 Z0700 MST",
 				},
 				Threshold: ThresholdCustomHitrate{
-					LimitMaxTTL:         300,
-					MaxRPS:              20,
-					LimitExtendTTLCheck: 60,
+					LimitMaxTTL: 300,
+					MaxRPS:      20,
 				},
 				AttributeKey: AttributeKeyhitrate{
 					KeyCheck: "keycheck",
@@ -64,15 +62,13 @@ func TestCustomHitRate(t *testing.T) {
 			name: "Positive CustomHitRate",
 			args: ReqCustomHitRate{
 				Config: ConfigCustomHitRate{
-					RedisDBName:       "local",
-					ExtendTTLKey:      60,
-					ExtendTTLKeyCheck: 30,
-					ParseLayoutTime:   "2006-01-02 15:04:05 Z0700 MST",
+					RedisDBName:     "local",
+					ExtendTTLKey:    60,
+					ParseLayoutTime: "2006-01-02 15:04:05 Z0700 MST",
 				},
 				Threshold: ThresholdCustomHitrate{
-					LimitMaxTTL:         300,
-					MaxRPS:              20,
-					LimitExtendTTLCheck: 60,
+					LimitMaxTTL: 300,
+					MaxRPS:      20,
 				},
 				AttributeKey: AttributeKeyhitrate{
 					KeyCheck: "keycheck",
@@ -85,15 +81,13 @@ func TestCustomHitRate(t *testing.T) {
 			name: "Negative CustomHitRate",
 			args: ReqCustomHitRate{
 				Config: ConfigCustomHitRate{
-					RedisDBName:       "wrongDB",
-					ExtendTTLKey:      60,
-					ExtendTTLKeyCheck: 30,
-					ParseLayoutTime:   "2006-01-02 15:04:05 Z0700 MST",
+					RedisDBName:     "wrongDB",
+					ExtendTTLKey:    60,
+					ParseLayoutTime: "2006-01-02 15:04:05 Z0700 MST",
 				},
 				Threshold: ThresholdCustomHitrate{
-					LimitMaxTTL:         300,
-					MaxRPS:              20,
-					LimitExtendTTLCheck: 60,
+					LimitMaxTTL: 300,
+					MaxRPS:      20,
 				},
 				AttributeKey: AttributeKeyhitrate{
 					KeyCheck: "keycheck",
@@ -107,15 +101,13 @@ func TestCustomHitRate(t *testing.T) {
 			name: "CustomHitRate->hitRateGetData low RPS",
 			args: ReqCustomHitRate{
 				Config: ConfigCustomHitRate{
-					RedisDBName:       "local",
-					ExtendTTLKey:      60,
-					ExtendTTLKeyCheck: 30,
-					ParseLayoutTime:   "2006-01-02 15:04:05 Z0700 MST",
+					RedisDBName:     "local",
+					ExtendTTLKey:    60,
+					ParseLayoutTime: "2006-01-02 15:04:05 Z0700 MST",
 				},
 				Threshold: ThresholdCustomHitrate{
-					LimitMaxTTL:         300,
-					MaxRPS:              20,
-					LimitExtendTTLCheck: 60,
+					LimitMaxTTL: 300,
+					MaxRPS:      20,
 				},
 				AttributeKey: AttributeKeyhitrate{
 					KeyCheck: "keycheck",
@@ -137,15 +129,13 @@ func TestCustomHitRate(t *testing.T) {
 			name: "CustomHitRate->hitRateGetData High RPS",
 			args: ReqCustomHitRate{
 				Config: ConfigCustomHitRate{
-					RedisDBName:       "local",
-					ExtendTTLKey:      60,
-					ExtendTTLKeyCheck: 30,
-					ParseLayoutTime:   "2006-01-02 15:04:05 Z0700 MST",
+					RedisDBName:     "local",
+					ExtendTTLKey:    60,
+					ParseLayoutTime: "2006-01-02 15:04:05 Z0700 MST",
 				},
 				Threshold: ThresholdCustomHitrate{
-					LimitMaxTTL:         300,
-					MaxRPS:              20,
-					LimitExtendTTLCheck: 60,
+					LimitMaxTTL: 300,
+					MaxRPS:      20,
 				},
 				AttributeKey: AttributeKeyhitrate{
 					KeyCheck: "keycheck",
@@ -167,15 +157,13 @@ func TestCustomHitRate(t *testing.T) {
 			name: "CustomHitRate->hitRateGetData High RPS new TTL < end_time",
 			args: ReqCustomHitRate{
 				Config: ConfigCustomHitRate{
-					RedisDBName:       "local",
-					ExtendTTLKey:      60,
-					ExtendTTLKeyCheck: 30,
-					ParseLayoutTime:   "2006-01-02 15:04:05 Z0700 MST",
+					RedisDBName:     "local",
+					ExtendTTLKey:    60,
+					ParseLayoutTime: "2006-01-02 15:04:05 Z0700 MST",
 				},
 				Threshold: ThresholdCustomHitrate{
-					LimitMaxTTL:         300,
-					MaxRPS:              20,
-					LimitExtendTTLCheck: 60,
+					LimitMaxTTL: 300,
+					MaxRPS:      20,
 				},
 				AttributeKey: AttributeKeyhitrate{
 					KeyCheck: "keycheck",
@@ -476,15 +464,13 @@ func TestValidateReqCustomHitRate(t *testing.T) {
 			name: "positive case",
 			args: ReqCustomHitRate{
 				Config: ConfigCustomHitRate{
-					RedisDBName:       "local",
-					ExtendTTLKey:      60,
-					ExtendTTLKeyCheck: 60,
-					ParseLayoutTime:   "2006-01-02 15:04:05 Z0700 MST",
+					RedisDBName:     "local",
+					ExtendTTLKey:    60,
+					ParseLayoutTime: "2006-01-02 15:04:05 Z0700 MST",
 				},
 				Threshold: ThresholdCustomHitrate{
-					LimitMaxTTL:         300,
-					MaxRPS:              20,
-					LimitExtendTTLCheck: 60,
+					LimitMaxTTL: 300,
+					MaxRPS:      20,
 				},
 				AttributeKey: AttributeKeyhitrate{
 					KeyCheck: "keycheck",
@@ -493,15 +479,13 @@ func TestValidateReqCustomHitRate(t *testing.T) {
 			},
 			output: ReqCustomHitRate{
 				Config: ConfigCustomHitRate{
-					RedisDBName:       "local",
-					ExtendTTLKey:      60,
-					ExtendTTLKeyCheck: 60,
-					ParseLayoutTime:   "2006-01-02 15:04:05 Z0700 MST",
+					RedisDBName:     "local",
+					ExtendTTLKey:    60,
+					ParseLayoutTime: "2006-01-02 15:04:05 Z0700 MST",
 				},
 				Threshold: ThresholdCustomHitrate{
-					LimitMaxTTL:         300,
-					MaxRPS:              20,
-					LimitExtendTTLCheck: 60,
+					LimitMaxTTL: 300,
+					MaxRPS:      20,
 				},
 				AttributeKey: AttributeKeyhitrate{
 					KeyCheck: "keycheck",
@@ -619,15 +603,13 @@ func TestValidateReqCustomHitRate(t *testing.T) {
 			},
 			output: ReqCustomHitRate{
 				Config: ConfigCustomHitRate{
-					RedisDBName:       "testing",
-					ExtendTTLKey:      60,
-					ExtendTTLKeyCheck: 60,
-					ParseLayoutTime:   "2006-01-02 15:04:05 Z0700 MST",
+					RedisDBName:     "testing",
+					ExtendTTLKey:    60,
+					ParseLayoutTime: "2006-01-02 15:04:05 Z0700 MST",
 				},
 				Threshold: ThresholdCustomHitrate{
-					LimitMaxTTL:         300,
-					MaxRPS:              20,
-					LimitExtendTTLCheck: 30,
+					LimitMaxTTL: 300,
+					MaxRPS:      20,
 				},
 				AttributeKey: AttributeKeyhitrate{
 					KeyCheck: "keycheck",
