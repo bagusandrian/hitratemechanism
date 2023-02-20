@@ -10,74 +10,6 @@ import (
 	cmap "github.com/orcaman/concurrent-map"
 )
 
-var (
-	Pool        hrm
-	hosts       cmap.ConcurrentMap
-	breakerCmap cmap.ConcurrentMap
-)
-
-// Options configuration options for redis connection
-type Options struct {
-	MaxIdleConn   int
-	MaxActiveConn int
-	Timeout       int
-	Wait          bool
-	Password      string
-	Username      string
-}
-
-// config used when we need to open new connection automatically
-type config struct {
-	Address string
-	Network string
-	Option  Options
-}
-
-type hrm struct {
-	DBs cmap.ConcurrentMap
-}
-
-type hiteRateData struct {
-	TTLKeyCheck    int64
-	countHitRate   int64
-	TTLKeyHitRate  int64
-	MaxDateTTL     time.Time
-	HaveMaxDateTTL bool
-	HighTraffic    bool
-	RPS            int64
-}
-
-type ReqCustomHitRate struct {
-	Config       ConfigCustomHitRate
-	Threshold    ThresholdCustomHitrate
-	AttributeKey AttributeKeyhitrate
-}
-type (
-	ConfigCustomHitRate struct {
-		RedisDBName       string
-		ExtendTTLKey      int64
-		ExtendTTLKeyCheck int64
-		ParseLayoutTime   string
-	}
-	ThresholdCustomHitrate struct {
-		LimitMaxTTL         int64
-		MaxRPS              int64
-		LimitExtendTTLCheck int64
-	}
-	AttributeKeyhitrate struct {
-		KeyCheck string
-		Prefix   string
-	}
-)
-type RespCustomHitRate struct {
-	HighTraffic    bool
-	HaveMaxDateTTL bool
-	ExtendTTL      bool
-	MaxDateTTL     time.Time
-	RPS            int64
-	Err            error
-}
-
 func init() {
 	Pool.DBs = cmap.New()
 	hosts = cmap.New()
@@ -257,8 +189,8 @@ func (r *hrm) CustomHitRate(req ReqCustomHitRate) RespCustomHitRate {
 	cmds := []cmdAddTTl{}
 	// if checker key hitrate dont have ttl, will set expire for 1 minute
 	// or key hitrate under 30 seconds, will set expire for 1 minute
-	if hitRateData.TTLKeyHitRate > int64(-3) && hitRateData.TTLKeyHitRate <= req.Threshold.LimitExtendTTLCheck {
-		cmds = append(cmds, cmdAddTTl{command: "EXPIRE", key: keyHitrate, expire: req.Config.ExtendTTLKeyCheck})
+	if hitRateData.TTLKeyHitRate > int64(-3) && hitRateData.TTLKeyHitRate <= ThresholdTTLKeyHitRate {
+		cmds = append(cmds, cmdAddTTl{command: "EXPIRE", key: keyHitrate, expire: TTLKeyHitRate})
 	}
 	newTTL := calculateNewTTL(hitRateData.TTLKeyCheck, req.Config.ExtendTTLKey, req.Threshold.LimitMaxTTL, hitRateData.MaxDateTTL)
 	resp := RespCustomHitRate{}
@@ -383,12 +315,6 @@ func validateReqCustomHitRate(req ReqCustomHitRate) (ReqCustomHitRate, error) {
 	}
 	if req.Config.ExtendTTLKey == 0 {
 		req.Config.ExtendTTLKey = 60
-	}
-	if req.Config.ExtendTTLKeyCheck == 0 {
-		req.Config.ExtendTTLKeyCheck = 60
-	}
-	if req.Threshold.LimitExtendTTLCheck == 0 {
-		req.Threshold.LimitExtendTTLCheck = 30
 	}
 	if req.Threshold.LimitMaxTTL == 0 {
 		req.Threshold.LimitMaxTTL = 300
