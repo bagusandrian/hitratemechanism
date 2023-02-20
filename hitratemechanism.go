@@ -190,7 +190,12 @@ func (r *hrm) CustomHitRate(req ReqCustomHitRate) RespCustomHitRate {
 	// if checker key hitrate dont have ttl, will set expire for 1 minute
 	// or key hitrate under 30 seconds, will set expire for 1 minute
 	if hitRateData.TTLKeyHitRate > int64(-3) && hitRateData.TTLKeyHitRate <= ThresholdTTLKeyHitRate {
-		cmds = append(cmds, cmdAddTTl{command: "EXPIRE", key: keyHitrate, expire: TTLKeyHitRate})
+		maxTTL := int64(time.Until(hitRateData.MaxDateTTL) / time.Second)
+		if maxTTL < int64(60) {
+			cmds = append(cmds, cmdAddTTl{command: "EXPIRE", key: keyHitrate, expire: maxTTL})
+		} else {
+			cmds = append(cmds, cmdAddTTl{command: "EXPIRE", key: keyHitrate, expire: TTLKeyHitRate})
+		}
 	}
 	newTTL := calculateNewTTL(hitRateData.TTLKeyCheck, req.Config.ExtendTTLKey, req.Threshold.LimitMaxTTL, hitRateData.MaxDateTTL)
 	resp := RespCustomHitRate{}
@@ -271,6 +276,10 @@ func (r *hrm) SetMaxTTLChecker(dbname, prefix, keyCheck string, endTime time.Tim
 		return fmt.Errorf("failed to obtain connection db %s", dbname)
 	}
 	defer conn.Close()
+	maxTTL := int64(time.Until(endTime) / time.Second)
+	if maxTTL < int64(60) {
+		conn.Send("EXPIRE", fmt.Sprintf("%s-%s", prefix, keyCheck), maxTTL)
+	}
 	conn.Send("HMSET", fmt.Sprintf("%s-%s", prefix, keyCheck), "end_time", endTime.Format("2006-01-02 15:04:05 Z0700 MST"))
 	err := conn.Flush()
 	return err
@@ -283,7 +292,7 @@ func calculateRPS(countHit int64) (rps int64) {
 func calculateNewTTL(TTLKeyCHeck, extendTTL, limitTTL int64, dateMax time.Time) (newTTL int64) {
 	maxTTL := int64(limitTTL)
 	if !dateMax.IsZero() {
-		maxTTL = int64(dateMax.Sub(time.Now()) / time.Second)
+		maxTTL = int64(time.Until(dateMax) / time.Second)
 	}
 	newTTL = extendTTL + TTLKeyCHeck
 	if newTTL > limitTTL {
