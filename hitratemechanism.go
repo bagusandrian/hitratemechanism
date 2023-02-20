@@ -194,7 +194,7 @@ func (r *hrm) CustomHitRate(req ReqCustomHitRate) RespCustomHitRate {
 	}
 	newTTL := calculateNewTTL(hitRateData.TTLKeyCheck, req.Config.ExtendTTLKey, req.Threshold.LimitMaxTTL, hitRateData.MaxDateTTL)
 	resp := RespCustomHitRate{}
-	if hitRateData.RPS > int64(20) {
+	if hitRateData.RPS >= req.Threshold.MaxRPS {
 		resp.HighTraffic = true
 		if newTTL > 0 {
 			// add ttl redis key target
