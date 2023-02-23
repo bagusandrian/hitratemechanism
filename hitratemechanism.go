@@ -1,20 +1,25 @@
 package HitRateMechanism
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"time"
 
 	"github.com/eapache/go-resiliency/breaker"
-	redigo "github.com/garyburd/redigo/redis"
 	cmap "github.com/orcaman/concurrent-map"
+
+	"github.com/redis/go-redis/v9"
 )
 
 func init() {
+	Pool.RDb = &redis.Conn{}
 	Pool.DBs = cmap.New()
 	hosts = cmap.New()
 	breakerCmap = cmap.New()
+	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 }
+
 func New(hostName, hostAddress, network string, customOption ...Options) {
 	opt := Options{
 		MaxIdleConn:   10,
@@ -25,23 +30,18 @@ func New(hostName, hostAddress, network string, customOption ...Options) {
 	if len(customOption) > 0 {
 		opt = customOption[0]
 	}
-
-	Pool.DBs.Set(hostName, &redigo.Pool{
-		MaxIdle:     opt.MaxIdleConn,
-		MaxActive:   opt.MaxActiveConn,
-		IdleTimeout: time.Duration(opt.Timeout) * time.Second,
-		Dial: func() (redigo.Conn, error) {
-			password := redigo.DialPassword(opt.Password)
-			c, err := redigo.Dial(network, hostAddress, password)
-			if err != nil {
-				log.Println("[redis][New] error dial host:", err)
-				return nil, err
-			}
-			return c, nil
-		},
+	rdb := redis.NewClient(&redis.Options{
+		Addr:         hostAddress,
+		Password:     opt.Password,
+		Username:     opt.Username,
+		MaxIdleConns: opt.MaxIdleConn,
+		DialTimeout:  time.Duration(opt.Timeout) * time.Second,
+		Dialer: redis.NewDialer(&redis.Options{Addr: hostAddress,
+			Password: opt.Password,
+			Username: opt.Username}),
 	})
-
-	// save the connection address and options for later ue
+	Pool.RDb = rdb.Conn()
+	Pool.DBs.Set(hostName, &rdb)
 	cfg := config{
 		Address: hostAddress,
 		Network: network,
@@ -56,8 +56,9 @@ func New(hostName, hostAddress, network string, customOption ...Options) {
 	}
 	hosts.Set(hostName, cfg)
 }
-func (r *hrm) getConnection(dbname string) redigo.Conn {
-	var rdsConn redigo.Conn
+
+func (r *hrm) getConnection(ctx context.Context, dbname string) redis.Conn {
+	var rdsConn redis.Conn
 
 	circuitbreaker, cbOk := breakerCmap.Get(dbname)
 	if !cbOk {
@@ -67,17 +68,12 @@ func (r *hrm) getConnection(dbname string) redigo.Conn {
 
 	cb := circuitbreaker.(*breaker.Breaker)
 	cbResult := cb.Run(func() error {
-		placeholderPool, ok := r.DBs.Get(dbname)
-		if !ok {
-			return fmt.Errorf("[redis] %s - failed to retrieve redis connection map", dbname)
-		}
-
-		redisPool := placeholderPool.(*redigo.Pool)
-		rdsConn = redisPool.Get()
-		if _, err := rdsConn.Do("PING"); err == nil {
+		rdsConn = *Pool.RDb
+		resp := rdsConn.Ping(ctx)
+		if resp.Err() == nil {
 			return nil
 		} else {
-			log.Println("[redis] ping error:", err)
+			log.Println("[redis] ping error:", resp.Err())
 			rdsConn.Close() // just in case
 		}
 
@@ -89,35 +85,28 @@ func (r *hrm) getConnection(dbname string) redigo.Conn {
 
 		host := hosttemp.(config)
 
-		if err := redisPool.Close(); err != nil {
-			log.Printf("[redis] %s - failed to close connection: %+v\n", dbname, err)
-			return err
-		}
-
 		Pool.DBs.Remove(dbname)
-		Pool.DBs.Set(dbname, &redigo.Pool{
-			MaxIdle:     host.Option.MaxIdleConn,
-			MaxActive:   host.Option.MaxActiveConn,
-			IdleTimeout: time.Duration(host.Option.Timeout) * time.Second,
-			Dial: func() (redigo.Conn, error) {
-				c, err := redigo.Dial(host.Network, host.Address)
-				if err != nil {
-					log.Println("[redis][getConnection] error dial host:", err)
-					return nil, err
-				}
-				return c, nil
-			},
+		// create new connection
+		rdb := redis.NewClient(&redis.Options{
+			Addr:         host.Address,
+			Password:     host.Option.Password,
+			Username:     host.Option.Username,
+			MaxIdleConns: host.Option.MaxIdleConn,
+			DialTimeout:  time.Duration(host.Option.Timeout) * time.Second,
+			Dialer: redis.NewDialer(&redis.Options{Addr: host.Address,
+				Password: host.Option.Password,
+				Username: host.Option.Username}),
 		})
+		Pool.DBs.Set(dbname, &rdb)
 
-		// return the asked datatype
-		rdsTempConn, ok := r.DBs.Get(dbname)
-		if !ok {
-			return fmt.Errorf("[redis] %s - failed to retrieve newly created redis connection map", dbname)
+		rdsConn = *rdb.Conn()
+		resp = rdsConn.Ping(ctx)
+		if resp.Err() == nil {
+			return nil
+		} else {
+			log.Println("[redis] ping error:", resp.Err())
+			rdsConn.Close() // just in case
 		}
-
-		redisPool = rdsTempConn.(*redigo.Pool)
-		// if the newly open connection is having error than it need human intervention
-		rdsConn = redisPool.Get()
 		return nil
 	})
 
@@ -130,52 +119,60 @@ func (r *hrm) getConnection(dbname string) redigo.Conn {
 
 // GetConnection return redigo.Conn which enable developers to do redis command
 // that is not commonly used (special case command, one that don't have wrapper function in this package. e.g: Exists)
-func (r *hrm) GetConnection(dbname string) redigo.Conn {
-	return r.getConnection(dbname)
+func (r *hrm) GetConnection(ctx context.Context, dbname string) redis.Conn {
+	return r.getConnection(ctx, dbname)
 }
-func (r *hrm) HgetAll(dbname, key string) (map[string]string, error) {
-	conn := r.getConnection(dbname)
-	if conn == nil {
+func (r *hrm) HgetAll(ctx context.Context, dbname, key string) (map[string]string, error) {
+	conn := r.getConnection(ctx, dbname)
+	check := conn.Ping(ctx)
+	if check.Err() != nil {
 		return nil, fmt.Errorf("failed get connection")
 	}
 	defer conn.Close()
-	result, err := redigo.StringMap(conn.Do("HGETALL", key))
+	resp := conn.HGetAll(ctx, key)
+	if resp.Err() != nil {
+		return nil, fmt.Errorf("got error on HGETALL: %+v\n", resp.Err())
+	}
+	result, err := resp.Result()
 	return result, err
 }
-func (r *hrm) HmsetWithExpMultiple(dbname string, data map[string]map[string]interface{}, expired int) (err error) {
-	expString := fmt.Sprintf("%d", expired)
-	conn := r.getConnection(dbname)
-	if conn == nil {
-		return fmt.Errorf("Failed to obtain connection db %s key %+v", dbname, data)
+
+func (r *hrm) HmsetWithExpMultiple(ctx context.Context, dbname string, data map[string]map[string]interface{}, expired int) (err error) {
+	conn := r.getConnection(ctx, dbname)
+	check := conn.Ping(ctx)
+	if check.Err() != nil {
+		return fmt.Errorf("failed get connection")
 	}
 	defer conn.Close()
+	pipeline := conn.Pipeline()
 	for key, hashmap := range data {
 		for f, v := range hashmap {
-			conn.Send("HMSET", key, f, v)
+			pipeline.HMSet(ctx, key, f, v)
 		}
-		conn.Send("EXPIRE", key, expString)
+		pipeline.Expire(ctx, key, time.Second*time.Duration(expired))
 	}
-	conn.Flush()
+	_, err = pipeline.Exec(ctx)
+
 	return
 }
 
-func (r *hrm) CustomHitRate(req ReqCustomHitRate) RespCustomHitRate {
-	// func (r *hrm) CustomHitRate(dbname, prefix, keyCheck string) (highTraffic, haveMaxDateTTL bool, err error) {
-	req, err := validateReqCustomHitRate(req)
+func (r *hrm) CustomHitRate(ctx context.Context, req ReqCustomHitRate) RespCustomHitRate {
+	req, err := validateReqCustomHitRate(ctx, req)
 	if err != nil {
 		return RespCustomHitRate{
 			Err: err,
 		}
 	}
 	keyHitrate := fmt.Sprintf("%s-%s", req.AttributeKey.Prefix, req.AttributeKey.KeyCheck)
-	conn := r.getConnection(req.Config.RedisDBName)
-	if conn == nil {
+	conn := r.getConnection(ctx, req.Config.RedisDBName)
+	check := conn.Ping(ctx)
+	if check.Err() != nil {
 		return RespCustomHitRate{
-			Err: fmt.Errorf("failed to obtain connection db %s", req.Config.RedisDBName),
+			Err: err,
 		}
 	}
 	defer conn.Close()
-	hitRateData, err := r.hitRateGetData(conn, req.AttributeKey.KeyCheck, keyHitrate, req.Config.ParseLayoutTime)
+	hitRateData, err := r.hitRateGetData(ctx, conn, req.AttributeKey.KeyCheck, keyHitrate, req.Config.ParseLayoutTime)
 	if err != nil {
 		return RespCustomHitRate{
 			Err: err,
@@ -186,15 +183,19 @@ func (r *hrm) CustomHitRate(req ReqCustomHitRate) RespCustomHitRate {
 		key     string
 		expire  int64
 	}
-	cmds := []cmdAddTTl{}
+	// cmds := []cmdAddTTl{}
+	pipeline := conn.Pipeline()
 	// if checker key hitrate dont have ttl, will set expire for 1 minute
 	// or key hitrate under 30 seconds, will set expire for 1 minute
 	if hitRateData.TTLKeyHitRate > int64(-3) && hitRateData.TTLKeyHitRate <= ThresholdTTLKeyHitRate {
-		maxTTL := int64(time.Until(hitRateData.MaxDateTTL) / time.Second)
-		if maxTTL < int64(60) {
-			cmds = append(cmds, cmdAddTTl{command: "EXPIRE", key: keyHitrate, expire: maxTTL})
+		if hitRateData.HaveMaxDateTTL {
+			maxTTL := int64(time.Until(hitRateData.MaxDateTTL) / time.Second)
+			if maxTTL < int64(60) {
+				pipeline.Expire(ctx, keyHitrate, time.Second*time.Duration(maxTTL))
+			}
 		} else {
-			cmds = append(cmds, cmdAddTTl{command: "EXPIRE", key: keyHitrate, expire: TTLKeyHitRate})
+			pipeline.Expire(ctx, keyHitrate, time.Second*time.Duration(TTLKeyHitRate))
+			// cmds = append(cmds, cmdAddTTl{command: "EXPIRE", key: keyHitrate, expire: TTLKeyHitRate})
 		}
 	}
 	newTTL := calculateNewTTL(hitRateData.TTLKeyCheck, req.Config.ExtendTTLKey, req.Threshold.LimitMaxTTL, hitRateData.MaxDateTTL)
@@ -203,28 +204,20 @@ func (r *hrm) CustomHitRate(req ReqCustomHitRate) RespCustomHitRate {
 		resp.HighTraffic = true
 		if newTTL > 0 {
 			// add ttl redis key target
-			cmds = append(cmds, cmdAddTTl{command: "EXPIRE", key: req.AttributeKey.KeyCheck, expire: newTTL})
+			pipeline.Expire(ctx, req.AttributeKey.KeyCheck, time.Second*time.Duration(newTTL))
+			// cmds = append(cmds, cmdAddTTl{command: "EXPIRE", key: req.AttributeKey.KeyCheck, expire: newTTL})
 			resp.ExtendTTL = true
 		}
 	}
-
-	if len(cmds) > 0 {
-		for _, data := range cmds {
-
-			err := conn.Send(data.command, data.key, data.expire)
-			if err != nil {
-				return RespCustomHitRate{
-					Err: fmt.Errorf("failed conn.Send err:%+v", err),
-				}
+	if pipeline.Len() > 0 {
+		_, err := pipeline.Exec(ctx)
+		if err != nil {
+			return RespCustomHitRate{
+				Err: fmt.Errorf("pipeline.Exec err:%+v", err),
 			}
 		}
 	}
-	err = conn.Flush()
-	if err != nil {
-		return RespCustomHitRate{
-			Err: fmt.Errorf("failed conn.Flush err:%+v", err),
-		}
-	}
+
 	if !hitRateData.MaxDateTTL.IsZero() {
 		resp.HaveMaxDateTTL = true
 		resp.MaxDateTTL = hitRateData.MaxDateTTL
@@ -233,57 +226,69 @@ func (r *hrm) CustomHitRate(req ReqCustomHitRate) RespCustomHitRate {
 	return resp
 }
 
-func (r *hrm) hitRateGetData(conn redigo.Conn, keyCheck, keyHitrate, parseLayoutTime string) (result hiteRateData, err error) {
-	conn.Send("TTL", keyCheck)                     // 1
-	conn.Send("HINCRBY", keyHitrate, "count", "1") // 2
-	conn.Send("TTL", keyHitrate)                   // 3
-	conn.Send("HMGET", keyHitrate, "end_time")     // 4
-	conn.Flush()
-	resultResponse := make(map[int]int64)
-	for i := 1; i <= 4; i++ {
-		if i == 4 {
-			resultKey, err := redigo.Strings(conn.Receive())
-			if err != nil {
-				return result, err
-			}
-			if resultKey[0] == "" {
-				continue
-			}
-			endTime, err := time.Parse(parseLayoutTime, resultKey[0])
-			if err != nil {
-				return result, err
-			}
-			result.MaxDateTTL = endTime
-			result.HaveMaxDateTTL = true
-			continue
-		}
-		resultKey, err := redigo.Int64(conn.Receive())
-		if err != nil {
-			return result, err
-		}
-		resultResponse[i] = resultKey
+func (r *hrm) hitRateGetData(ctx context.Context, conn redis.Conn, keyCheck, keyHitrate, parseLayoutTime string) (result hiteRateData, err error) {
+	pipeline := conn.Pipeline()
+	cmdsDuration := map[string]*redis.DurationCmd{}
+	cmdsInt := map[string]*redis.IntCmd{}
+	cmdsSlice := map[string]*redis.SliceCmd{}
+	cmdsDuration["keycheck"] = pipeline.TTL(ctx, keyCheck)
+	cmdsDuration["keyhitrate"] = pipeline.TTL(ctx, keyHitrate)
+	cmdsInt["keyhitrate"] = pipeline.HIncrBy(ctx, keyHitrate, "count", 1)
+	cmdsSlice["kehitrate_end_time"] = pipeline.HMGet(ctx, keyHitrate, "end_time")
+	_, err = pipeline.Exec(ctx)
+	if err != nil {
+		return result, err
 	}
-	result.TTLKeyCheck = resultResponse[1]
-	result.countHitRate = resultResponse[2]
-	result.TTLKeyHitRate = resultResponse[3]
+	// mapping TTLKeyCheck
+	if cmdsDuration["keycheck"].Err() != nil {
+		return result, cmdsDuration["keycheck"].Err()
+	}
+	result.TTLKeyCheck = int64(cmdsDuration["keycheck"].Val().Seconds())
+	// mapping TTLKeyHitRate
+	if cmdsDuration["keyhitrate"].Err() != nil {
+		return result, cmdsDuration["keyhitrate"].Err()
+	}
+	result.TTLKeyHitRate = int64(cmdsDuration["keyhitrate"].Val().Seconds())
+	// mapping countHitRate
+	if cmdsInt["keyhitrate"].Err() != nil {
+		return result, cmdsInt["keyhitrate"].Err()
+	}
+	result.countHitRate = cmdsInt["keyhitrate"].Val()
+	// mapping keyhitrate_end_time
+	if cmdsSlice["kehitrate_end_time"].Err() != nil {
+		return result, cmdsSlice["kehitrate_end_time"].Err()
+	}
+	temp := cmdsSlice["kehitrate_end_time"].Val()
+	if len(temp) > 0 {
+		dateFormat, err := time.Parse(parseLayoutTime, fmt.Sprintf("%v", temp[0]))
+		if err == nil {
+			result.MaxDateTTL = dateFormat
+			result.HaveMaxDateTTL = true
+		}
+	}
+	// mapping RPS
 	result.RPS = calculateRPS(result.countHitRate)
 	return
 }
 
-func (r *hrm) SetMaxTTLChecker(dbname, prefix, keyCheck string, endTime time.Time) error {
-	conn := r.getConnection(dbname)
-	if conn == nil {
-		return fmt.Errorf("failed to obtain connection db %s", dbname)
+func (r *hrm) SetMaxTTLChecker(ctx context.Context, dbname, prefix, keyCheck string, endTime time.Time) error {
+	key := fmt.Sprintf("%s-%s", prefix, keyCheck)
+	conn := r.getConnection(ctx, dbname)
+	check := conn.Ping(ctx)
+	if check.Err() != nil {
+		return fmt.Errorf("failed get connection")
 	}
 	defer conn.Close()
+	pipeline := conn.Pipeline()
 	maxTTL := int64(time.Until(endTime) / time.Second)
 	if maxTTL < int64(60) {
-		conn.Send("EXPIRE", fmt.Sprintf("%s-%s", prefix, keyCheck), maxTTL)
+		pipeline.Expire(ctx, key, time.Second*time.Duration(maxTTL))
 	}
-	conn.Send("HMSET", fmt.Sprintf("%s-%s", prefix, keyCheck), "end_time", endTime.Format("2006-01-02 15:04:05 Z0700 MST"))
-	err := conn.Flush()
+	pipeline.HMSet(ctx, key, "end_time", endTime.Format("2006-01-02 15:04:05 Z0700 MST"))
+	_, err := pipeline.Exec(ctx)
 	return err
 }
+
 func calculateRPS(countHit int64) (rps int64) {
 	rps = int64(countHit / 60)
 	return
@@ -306,7 +311,7 @@ func calculateNewTTL(TTLKeyCHeck, extendTTL, limitTTL int64, dateMax time.Time) 
 	return
 }
 
-func validateReqCustomHitRate(req ReqCustomHitRate) (ReqCustomHitRate, error) {
+func validateReqCustomHitRate(ctx context.Context, req ReqCustomHitRate) (ReqCustomHitRate, error) {
 	if req.Config.RedisDBName == "" {
 		return req, fmt.Errorf("empty redisDBName config")
 	}

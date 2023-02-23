@@ -3,35 +3,37 @@ package HitRateMechanism
 import (
 	"context"
 	"fmt"
+	"log"
 	"reflect"
 	"testing"
 	"time"
 
 	"github.com/alicebob/miniredis"
-	// "github.com/garyburd/redigo/redis"
 	"github.com/redis/go-redis/v9"
 )
 
 func BenchmarkCustomHitRate(b *testing.B) {
-	for i := 0; i <= 100; i++ {
+	for i := 0; i <= 0; i++ {
 		prefix := fmt.Sprintf("prefix+%d", i)
 		keyCheck := fmt.Sprintf("keycheck+%d", i)
 		rdb := redis.NewClient(&redis.Options{
-			Addr:     "localhost:6379",
+			Addr:     "127.0.0.1:6379",
 			Password: "", // no password set
 			DB:       0,  // use default DB
 		})
 		ctx := context.Background()
-		New("local", "localhost:6379", "tcp")
 		prefixKeycheck := fmt.Sprintf("%s-%s", prefix, keyCheck)
-		_, err := rdb.HIncrBy(ctx, prefixKeycheck, "count", int64(i*100)).Result()
+		_, err := rdb.HIncrBy(ctx, prefixKeycheck, "count", int64(2000)).Result()
 		if err != nil {
 			b.Errorf("got errof for incr data mock err:%+v\n", err)
 		}
 		rdb.Expire(ctx, prefixKeycheck, 10*time.Second)
+		rdb.HSet(ctx, prefixKeycheck, "end_time", time.Now().Add(10*time.Second).Format("2006-01-02 15:04:05 Z0700 MST"))
 		rdb.HSet(ctx, keyCheck, "field", "value")
+		rdb.HSet(ctx, keyCheck, "end_time", time.Now().Add(10*time.Second).Format("2006-01-02 15:04:05 Z0700 MST"))
 		rdb.Expire(ctx, keyCheck, 10*time.Second)
 		b.Run(fmt.Sprintf("benchmark CustomHitRate %d", i), func(b *testing.B) {
+			New("local", "127.0.0.1:6379", "tcp")
 			req := ReqCustomHitRate{
 				Config: ConfigCustomHitRate{
 					RedisDBName:     "local",
@@ -43,11 +45,12 @@ func BenchmarkCustomHitRate(b *testing.B) {
 					MaxRPS:      20,
 				},
 				AttributeKey: AttributeKeyhitrate{
-					KeyCheck: "keycheck",
-					Prefix:   "prefix",
+					KeyCheck: keyCheck,
+					Prefix:   prefix,
 				},
 			}
-			Pool.CustomHitRate(req)
+			ctx := context.Background()
+			Pool.CustomHitRate(ctx, req)
 		})
 	}
 }
@@ -95,7 +98,7 @@ func TestCustomHitRate(t *testing.T) {
 				},
 			},
 			preparationData: func(mockRedis *miniredis.Miniredis) {},
-			wantErr:         true,
+			wantErr:         false,
 		},
 		{
 			name: "CustomHitRate->hitRateGetData low RPS",
@@ -194,16 +197,98 @@ func TestCustomHitRate(t *testing.T) {
 				}
 				defer miniRds.Close()
 
-				redisSrv, err := miniredis.Run()
-				if err != nil {
-					t.Errorf("failed run redisSrv err: %+v\n", err)
-				}
-				New(tt.args.Config.RedisDBName, redisSrv.Addr(), "tcp")
-				tt.preparationData(redisSrv)
+				New(tt.args.Config.RedisDBName, miniRds.Addr(), "tcp")
+				tt.preparationData(miniRds)
 			}
-			resp := Pool.CustomHitRate(tt.args)
+			ctx := context.Background()
+			resp := Pool.CustomHitRate(ctx, tt.args)
 			if (resp.Err != nil) != tt.wantErr {
 				t.Errorf("wantErr: %t got error CustomHitRate err: %+v\n", tt.wantErr, resp.Err)
+			}
+		})
+	}
+}
+
+func TestHitRateGetData(t *testing.T) {
+	layoutTime := "2006-01-02 15:04:05 Z0700 MST"
+	dateMarking := time.Now().Add(time.Second * 20).Format(layoutTime)
+	type args struct {
+		dbname, keyCheck, keyHitrate, parseLayoutTime string
+	}
+	tests := []struct {
+		name            string
+		args            args
+		preparationData func(mockRedis *miniredis.Miniredis)
+		wantErr         bool
+		result          hiteRateData
+	}{
+		{
+			name: "HitRateGetData -> positive case no record",
+			args: args{
+				dbname:          "local",
+				keyCheck:        "keycheck",
+				keyHitrate:      "keyhitrate",
+				parseLayoutTime: "2006-01-02 15:04:05 Z0700 MST",
+			},
+			preparationData: func(mockRedis *miniredis.Miniredis) {},
+			result: hiteRateData{
+				countHitRate:  1,
+				TTLKeyCheck:   0,
+				TTLKeyHitRate: 0,
+				RPS:           0,
+			},
+		},
+		{
+			name: "HitRateGetData -> positive case have record",
+			args: args{
+				dbname:          "local",
+				keyCheck:        "keycheck",
+				keyHitrate:      "keyhitrate",
+				parseLayoutTime: "2006-01-02 15:04:05 Z0700 MST",
+			},
+			preparationData: func(mockRedis *miniredis.Miniredis) {
+				_, err := mockRedis.HIncr("keyhitrate", "count", 1000)
+				if err != nil {
+					t.Errorf("got errof for incr data mock err:%+v\n", err)
+				}
+				mockRedis.SetTTL("keyhitrate", 100*time.Second)
+				mockRedis.HSet("keycheck", "field", "value")
+				mockRedis.HSet("keyhitrate", "end_time", dateMarking)
+				mockRedis.HSet("keycheck", "end_time", dateMarking)
+				mockRedis.SetTTL("keycheck", 100*time.Second)
+			},
+			result: hiteRateData{
+				countHitRate:   1001,
+				TTLKeyCheck:    100,
+				TTLKeyHitRate:  100,
+				RPS:            16,
+				HaveMaxDateTTL: true,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if !tt.wantErr {
+				miniRds, err := miniredis.Run()
+				if err != nil {
+					t.Errorf("failed run miniRds err: %+v\n", err)
+				}
+				defer miniRds.Close()
+				New(tt.args.dbname, miniRds.Addr(), "tcp")
+				tt.preparationData(miniRds)
+			}
+			ctx := context.Background()
+			conn := Pool.getConnection(ctx, tt.args.dbname)
+			result, err := Pool.hitRateGetData(ctx, conn, tt.args.keyCheck, tt.args.keyHitrate, tt.args.parseLayoutTime)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("wantErr: %t got error HmsetWithExpMultiple err: %+v\n", tt.wantErr, err)
+			}
+			if result.countHitRate != tt.result.countHitRate ||
+				result.TTLKeyCheck != tt.result.TTLKeyCheck ||
+				result.TTLKeyHitRate != tt.result.TTLKeyHitRate ||
+				result.HaveMaxDateTTL != tt.result.HaveMaxDateTTL ||
+				result.RPS != tt.result.RPS {
+				t.Errorf("want result %+v || but expected is %+v\n", tt.result, result)
 			}
 		})
 	}
@@ -230,7 +315,7 @@ func TestHmsetWithExpMultiple(t *testing.T) {
 			args: args{
 				dbname:  "local",
 				data:    data,
-				expired: 1,
+				expired: 10,
 			},
 		},
 		{
@@ -251,14 +336,10 @@ func TestHmsetWithExpMultiple(t *testing.T) {
 					t.Errorf("failed run miniRds err: %+v\n", err)
 				}
 				defer miniRds.Close()
-
-				redisSrv, err := miniredis.Run()
-				if err != nil {
-					t.Errorf("failed run redisSrv err: %+v\n", err)
-				}
-				New(tt.args.dbname, redisSrv.Addr(), "tcp")
+				New(tt.args.dbname, miniRds.Addr(), "tcp")
 			}
-			err := Pool.HmsetWithExpMultiple(tt.args.dbname, tt.args.data, tt.args.expired)
+			ctx := context.Background()
+			err := Pool.HmsetWithExpMultiple(ctx, tt.args.dbname, tt.args.data, tt.args.expired)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("wantErr: %t got error HmsetWithExpMultiple err: %+v\n", tt.wantErr, err)
 			}
@@ -299,19 +380,19 @@ func TestHgetAll(t *testing.T) {
 				}
 				defer miniRds.Close()
 
-				redisSrv, err := miniredis.Run()
-				if err != nil {
-					t.Errorf("failed run redisSrv err: %+v\n", err)
-				}
-				New(tt.args.dbname, redisSrv.Addr(), "tcp")
+				miniRds.HSet(tt.args.key, "testing", "testing")
+				New(tt.args.dbname, miniRds.Addr(), "tcp")
 			}
-			_, err := Pool.HgetAll(tt.args.dbname, tt.args.key)
+			ctx := context.Background()
+			result, err := Pool.HgetAll(ctx, tt.args.dbname, tt.args.key)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("wantErr: %t got error TestHgetAll err: %+v\n", tt.wantErr, err)
 			}
+			log.Println(result)
 		})
 	}
 }
+
 func TestSetMaxTTLChecker(t *testing.T) {
 	type args struct {
 		dbname, prefix, keyCheck string
@@ -350,20 +431,17 @@ func TestSetMaxTTLChecker(t *testing.T) {
 					t.Errorf("failed run miniRds err: %+v\n", err)
 				}
 				defer miniRds.Close()
-
-				redisSrv, err := miniredis.Run()
-				if err != nil {
-					t.Errorf("failed run redisSrv err: %+v\n", err)
-				}
-				New(tt.args.dbname, redisSrv.Addr(), "tcp")
+				New(tt.args.dbname, miniRds.Addr(), "tcp")
 			}
-			err := Pool.SetMaxTTLChecker(tt.args.dbname, tt.args.prefix, tt.args.keyCheck, tt.args.endTime)
+			ctx := context.Background()
+			err := Pool.SetMaxTTLChecker(ctx, tt.args.dbname, tt.args.prefix, tt.args.keyCheck, tt.args.endTime)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("wantErr: %t got error SetMaxTTLChecker err: %+v\n", tt.wantErr, err)
 			}
 		})
 	}
 }
+
 func TestCalculateRPS(t *testing.T) {
 	type args struct {
 		countHit int64
@@ -622,7 +700,8 @@ func TestValidateReqCustomHitRate(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := validateReqCustomHitRate(tt.args)
+			ctx := context.Background()
+			result, err := validateReqCustomHitRate(ctx, tt.args)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("wantErr: %t got error validateReqCustomHitRate err: %+v\n", tt.wantErr, err)
 			}

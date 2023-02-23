@@ -4,6 +4,7 @@ import (
 	"time"
 
 	cmap "github.com/orcaman/concurrent-map"
+	"github.com/redis/go-redis/v9"
 )
 
 var (
@@ -33,6 +34,7 @@ type config struct {
 
 type hrm struct {
 	DBs cmap.ConcurrentMap
+	RDb *redis.Conn
 }
 
 type hiteRateData struct {
