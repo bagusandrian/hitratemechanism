@@ -192,6 +192,8 @@ func (r *hrm) CustomHitRate(ctx context.Context, req ReqCustomHitRate) RespCusto
 			maxTTL := int64(time.Until(hitRateData.MaxDateTTL) / time.Second)
 			if maxTTL < int64(60) {
 				pipeline.Expire(ctx, keyHitrate, time.Second*time.Duration(maxTTL))
+			} else if hitRateData.TTLKeyHitRate < 30 {
+				pipeline.Expire(ctx, keyHitrate, time.Second*time.Duration(TTLKeyHitRate))
 			}
 		} else {
 			pipeline.Expire(ctx, keyHitrate, time.Second*time.Duration(TTLKeyHitRate))
