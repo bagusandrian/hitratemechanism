@@ -28,13 +28,15 @@ type Options struct {
 // config used when we need to open new connection automatically
 type config struct {
 	Address string
+	ListIPs []string
 	Network string
 	Option  Options
 }
 
 type hrm struct {
-	DBs cmap.ConcurrentMap
-	RDb *redis.Conn
+	DBs            cmap.ConcurrentMap
+	RDb            *redis.Conn
+	RClusterClient *redis.ClusterClient
 }
 
 type hiteRateData struct {

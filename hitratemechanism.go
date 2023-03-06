@@ -14,6 +14,7 @@ import (
 
 func init() {
 	Pool.RDb = &redis.Conn{}
+	Pool.RClusterClient = &redis.ClusterClient{}
 	Pool.DBs = cmap.New()
 	hosts = cmap.New()
 	breakerCmap = cmap.New()
