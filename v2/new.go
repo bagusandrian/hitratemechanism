@@ -44,6 +44,7 @@ var jsoni jsoniterpackage.API
 
 func New(hrm *HitRateMechanism) {
 	jsoni = jsoniterpackage.ConfigCompatibleWithStandardLibrary
+	hrm.Config.LimitTrend = 5
 	hrm.MemoryCache.Cache = memoryCache.New(hrm.Config.DefaultExpiration, hrm.Config.CleanupInterval)
 	return
 }
@@ -57,6 +58,8 @@ func (hrm *HitRateMechanism) CacheValidateTrend(req RequestCheck) (resp Response
 			Error:        err,
 		}
 	}
+	data.ThresholdRPS = hrm.Config.ThresholdRPS
+	data.LimitTrend = hrm.Config.LimitTrend
 	if len(data.TimeTrend) < hrm.Config.LimitTrend {
 		for i := int64(0); i <= int64(hrm.Config.LimitTrend-1); i++ {
 			if _, exist := data.TimeTrend[i]; exist {
@@ -66,8 +69,6 @@ func (hrm *HitRateMechanism) CacheValidateTrend(req RequestCheck) (resp Response
 				break
 			}
 		}
-		data.ThresholdRPS = hrm.Config.ThresholdRPS
-		data.LimitTrend = hrm.Config.LimitTrend
 		hrm.cacheSetDataTrend(req.Key, data)
 	} else if !data.HasCache {
 		for i := int64(0); i <= int64(4); i++ {
@@ -79,13 +80,14 @@ func (hrm *HitRateMechanism) CacheValidateTrend(req RequestCheck) (resp Response
 		}
 		timeAvg := (((data.TimeTrend[4] - data.TimeTrend[3]) + (data.TimeTrend[3] - data.TimeTrend[2]) + (data.TimeTrend[2] - data.TimeTrend[1]) + (data.TimeTrend[1] - data.TimeTrend[0])) / 4)
 		data.EstimateRPS = 1000 / timeAvg
-		data.ThresholdRPS = hrm.Config.ThresholdRPS
-		data.LimitTrend = hrm.Config.LimitTrend
 		if data.EstimateRPS > hrm.Config.ThresholdRPS {
 			data.HasCache = true
 		}
 		hrm.cacheSetDataTrend(req.Key, data)
 
+	} else if data.HasCache {
+		timeAvg := (((data.TimeTrend[4] - data.TimeTrend[3]) + (data.TimeTrend[3] - data.TimeTrend[2]) + (data.TimeTrend[2] - data.TimeTrend[1]) + (data.TimeTrend[1] - data.TimeTrend[0])) / 4)
+		data.EstimateRPS = 1000 / timeAvg
 	}
 
 	// log.Printf("no need set again! data.HasCache: %t\n", data.HasCache)
