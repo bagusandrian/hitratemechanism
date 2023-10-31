@@ -58,6 +58,7 @@ func (hrm *HitRateMechanism) CacheValidateTrend(req RequestCheck) (resp Response
 			Error:        err,
 		}
 	}
+	data.EstimateRPS = hrm.calculateRPS(data.TimeTrend)
 	var successMessage string
 	data.ThresholdRPS = req.ThresholdRPS
 	data.LimitTrend = hrm.Config.LimitTrend
@@ -79,8 +80,6 @@ func (hrm *HitRateMechanism) CacheValidateTrend(req RequestCheck) (resp Response
 				data.TimeTrend[i] = time.Now().UnixMilli()
 			}
 		}
-		timeAvg := (((data.TimeTrend[4] - data.TimeTrend[3]) + (data.TimeTrend[3] - data.TimeTrend[2]) + (data.TimeTrend[2] - data.TimeTrend[1]) + (data.TimeTrend[1] - data.TimeTrend[0])) / 4)
-		data.EstimateRPS = 1000 / timeAvg
 		if data.EstimateRPS > req.ThresholdRPS {
 			data.HasCache = true
 			successMessage = fmt.Sprintf("no need set again! data.HasCache: %t\n", data.HasCache)
@@ -88,8 +87,6 @@ func (hrm *HitRateMechanism) CacheValidateTrend(req RequestCheck) (resp Response
 		hrm.cacheSetDataTrend(req.Key, data)
 
 	} else if data.HasCache {
-		timeAvg := (((data.TimeTrend[4] - data.TimeTrend[3]) + (data.TimeTrend[3] - data.TimeTrend[2]) + (data.TimeTrend[2] - data.TimeTrend[1]) + (data.TimeTrend[1] - data.TimeTrend[0])) / 4)
-		data.EstimateRPS = 1000 / timeAvg
 		successMessage = fmt.Sprintf("no need set again! data.HasCache: %t\n", data.HasCache)
 	}
 
@@ -125,4 +122,10 @@ func (hrm *HitRateMechanism) cacheSetDataTrend(key string, value DataTimeTrend) 
 
 func (hrm *HitRateMechanism) generateKey(key string) string {
 	return fmt.Sprintf("%s:%s", hrm.Config.PrefixKey, key)
+}
+
+func (hrm *HitRateMechanism) calculateRPS(timeTrend map[int64]int64) int64 {
+	len := int64(len(timeTrend))
+	result := (timeTrend[(len-1)] - timeTrend[0]) / len
+	return result
 }
