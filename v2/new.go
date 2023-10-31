@@ -95,6 +95,7 @@ func (hrm *HitRateMechanism) CacheValidateTrend(req RequestCheck) (resp Response
 
 func (hrm *HitRateMechanism) cacheGetDataTrend(key string) (result DataTimeTrend, err error) {
 	result = DataTimeTrend{}
+	result.TimeTrend = make(map[int64]int64)
 	item, found := hrm.MemoryCache.Cache.Get(hrm.generateKey(key))
 	if !found {
 		return result, nil
