@@ -58,6 +58,7 @@ func (hrm *HitRateMechanism) CacheValidateTrend(req RequestCheck) (resp Response
 			Error:        err,
 		}
 	}
+	var successMessage string
 	data.ThresholdRPS = hrm.Config.ThresholdRPS
 	data.LimitTrend = hrm.Config.LimitTrend
 	if len(data.TimeTrend) < hrm.Config.LimitTrend {
@@ -82,20 +83,22 @@ func (hrm *HitRateMechanism) CacheValidateTrend(req RequestCheck) (resp Response
 		data.EstimateRPS = 1000 / timeAvg
 		if data.EstimateRPS > hrm.Config.ThresholdRPS {
 			data.HasCache = true
+			successMessage = fmt.Sprintf("no need set again! data.HasCache: %t\n", data.HasCache)
 		}
 		hrm.cacheSetDataTrend(req.Key, data)
 
 	} else if data.HasCache {
 		timeAvg := (((data.TimeTrend[4] - data.TimeTrend[3]) + (data.TimeTrend[3] - data.TimeTrend[2]) + (data.TimeTrend[2] - data.TimeTrend[1]) + (data.TimeTrend[1] - data.TimeTrend[0])) / 4)
 		data.EstimateRPS = 1000 / timeAvg
+		successMessage = fmt.Sprintf("no need set again! data.HasCache: %t\n", data.HasCache)
 	}
 
 	// log.Printf("no need set again! data.HasCache: %t\n", data.HasCache)
 	return Response{
 		ResponseTime:   time.Since(now).String(),
+		SuccessMessage: successMessage,
 		Error:          nil,
 		DataTimeTrend:  data,
-		SuccessMessage: fmt.Sprintf("no need set again! data.HasCache: %t\n", data.HasCache),
 	}
 }
 
