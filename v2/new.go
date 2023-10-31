@@ -58,7 +58,9 @@ func (hrm *HitRateMechanism) CacheValidateTrend(req RequestCheck) (resp Response
 			Error:        err,
 		}
 	}
-	data.EstimateRPS = hrm.calculateRPS(data.TimeTrend)
+	if len(data.TimeTrend) > 1 {
+		data.EstimateRPS = hrm.calculateRPS(data.TimeTrend)
+	}
 	var successMessage string
 	data.ThresholdRPS = req.ThresholdRPS
 	data.LimitTrend = hrm.Config.LimitTrend
@@ -126,6 +128,6 @@ func (hrm *HitRateMechanism) generateKey(key string) string {
 
 func (hrm *HitRateMechanism) calculateRPS(timeTrend map[int64]int64) int64 {
 	len := int64(len(timeTrend))
-	result := (timeTrend[(len-1)] - timeTrend[0]) / len
+	result := 1000 / ((timeTrend[(len-1)] - timeTrend[0]) / len)
 	return result
 }
