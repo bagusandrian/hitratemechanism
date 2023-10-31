@@ -14,7 +14,6 @@ type (
 			DefaultExpiration time.Duration
 			CleanupInterval   time.Duration
 			PrefixKey         string
-			ThresholdRPS      int64
 			LimitTrend        int
 		}
 		MemoryCache MemoryCache
@@ -22,15 +21,16 @@ type (
 	DataTimeTrend struct {
 		HasCache     bool            `json:"has_cache"`
 		TimeTrend    map[int64]int64 `json:"time_trend"`
+		EstimateRPS  int64           `json:"estimate_rps"`
 		ThresholdRPS int64           `json:"threshold_rps"`
-		EstimateRPS  int64           `json:"rps_estimate"`
 		LimitTrend   int             `json:"limit_trend"`
 	}
 	MemoryCache struct {
 		Cache *memoryCache.Cache
 	}
 	RequestCheck struct {
-		Key string
+		Key          string
+		ThresholdRPS int64
 	}
 	Response struct {
 		ResponseTime   string `json:"response_time"`
@@ -59,7 +59,7 @@ func (hrm *HitRateMechanism) CacheValidateTrend(req RequestCheck) (resp Response
 		}
 	}
 	var successMessage string
-	data.ThresholdRPS = hrm.Config.ThresholdRPS
+	data.ThresholdRPS = req.ThresholdRPS
 	data.LimitTrend = hrm.Config.LimitTrend
 	if len(data.TimeTrend) < hrm.Config.LimitTrend {
 		for i := int64(0); i <= int64(hrm.Config.LimitTrend-1); i++ {
@@ -81,7 +81,7 @@ func (hrm *HitRateMechanism) CacheValidateTrend(req RequestCheck) (resp Response
 		}
 		timeAvg := (((data.TimeTrend[4] - data.TimeTrend[3]) + (data.TimeTrend[3] - data.TimeTrend[2]) + (data.TimeTrend[2] - data.TimeTrend[1]) + (data.TimeTrend[1] - data.TimeTrend[0])) / 4)
 		data.EstimateRPS = 1000 / timeAvg
-		if data.EstimateRPS > hrm.Config.ThresholdRPS {
+		if data.EstimateRPS > req.ThresholdRPS {
 			data.HasCache = true
 			successMessage = fmt.Sprintf("no need set again! data.HasCache: %t\n", data.HasCache)
 		}
