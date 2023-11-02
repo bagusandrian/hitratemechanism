@@ -1,9 +1,12 @@
 package model
 
+import "time"
+
 type (
 	RequestCheck struct {
 		Key          string
 		ThresholdRPS int64
+		TTLCache     time.Duration
 	}
 	Response struct {
 		ResponseTime   string `json:"response_time"`

@@ -4,12 +4,15 @@ import (
 	"time"
 
 	memoryCache "github.com/patrickmn/go-cache"
+	"github.com/redis/rueidis"
 )
 
 type (
 	HitRateMechanism struct {
 		Config      Config
 		MemoryCache MemoryCache
+		Redis       rueidis.Client
+		RedisConfig rueidis.ClientOption
 	}
 	Config struct {
 		DefaultExpiration time.Duration

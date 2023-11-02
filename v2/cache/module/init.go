@@ -16,7 +16,7 @@ type usecase struct {
 func New(hrm *m.HitRateMechanism) cache.Handler {
 	jsoni := jsoniterpackage.ConfigCompatibleWithStandardLibrary
 	return &usecase{
-		Cache: hrm.MemoryCache.Cache,
+		Cache: memoryCache.New(hrm.Config.DefaultExpiration, hrm.Config.CleanupInterval),
 		Conf:  hrm.Config,
 		jsoni: jsoni,
 	}

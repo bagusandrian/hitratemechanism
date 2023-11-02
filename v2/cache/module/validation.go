@@ -34,7 +34,7 @@ func (u *usecase) CacheValidateTrend(ctx context.Context, req m.RequestCheck) (r
 		}
 		u.cacheSetDataTrend(ctx, req.Key, data)
 	} else if !data.HasCache {
-		for i := int64(0); i <= int64(4); i++ {
+		for i := int64(0); i <= int64(data.LimitTrend-1); i++ {
 			if i <= 3 {
 				data.TimeTrend[i] = data.TimeTrend[i+1]
 			} else {
