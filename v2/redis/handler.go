@@ -9,4 +9,5 @@ import (
 
 type Handler interface {
 	HgetAll(ctx context.Context, req m.RequestCheck) (resp rueidis.RedisResult, cacheDebug m.Response)
+	Get(ctx context.Context, req m.RequestCheck) (resp rueidis.RedisResult, cacheDebug m.Response)
 }
