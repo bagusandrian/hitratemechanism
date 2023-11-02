@@ -7,7 +7,7 @@ import (
 	"github.com/redis/rueidis"
 )
 
-func (u *usecase) HgetAll(ctx context.Context, req m.RequestCheck) (resp rueidis.RedisResult, cacheDebug m.Response) {
+func (u *usecase) Get(ctx context.Context, req m.RequestCheck) (resp rueidis.RedisResult, cacheDebug m.Response) {
 	cacheData := u.HandlerCache.CacheValidateTrend(ctx, req)
 	if cacheData.DataTimeTrend.HasCache {
 		resp = u.Redis.DoCache(ctx, u.Redis.B().Get().Key(req.Key).Cache(), req.TTLCache)
