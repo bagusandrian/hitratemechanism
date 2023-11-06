@@ -10,10 +10,10 @@ import (
 func (u *usecase) Get(ctx context.Context, req m.RequestCheck) (resp rueidis.RedisResult, cacheDebug m.Response) {
 	cacheData := u.HandlerCache.CacheValidateTrend(ctx, req)
 	if cacheData.DataTimeTrend.ReachThresholdRPS {
-		cacheData.DataTimeTrend.HasCache = true
 		resp = u.Redis.DoCache(ctx, u.Redis.B().Get().Key(req.Key).Cache(), req.TTLCache)
 	} else {
 		resp = u.Redis.Do(ctx, u.Redis.B().Get().Key(req.Key).Build())
 	}
+	cacheData.DataTimeTrend.HasCache = resp.IsCacheHit()
 	return resp, cacheData
 }

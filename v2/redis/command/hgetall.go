@@ -9,10 +9,11 @@ import (
 
 func (u *usecase) HgetAll(ctx context.Context, req m.RequestCheck) (resp rueidis.RedisResult, cacheDebug m.Response) {
 	cacheData := u.HandlerCache.CacheValidateTrend(ctx, req)
-	if cacheData.DataTimeTrend.HasCache {
+	if cacheData.DataTimeTrend.ReachThresholdRPS {
 		resp = u.Redis.DoCache(ctx, u.Redis.B().Hgetall().Key(req.Key).Cache(), req.TTLCache)
 	} else {
 		resp = u.Redis.Do(ctx, u.Redis.B().Hgetall().Key(req.Key).Build())
 	}
+	cacheData.DataTimeTrend.HasCache = resp.IsCacheHit()
 	return resp, cacheData
 }
