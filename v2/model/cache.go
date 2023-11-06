@@ -15,10 +15,11 @@ type (
 		SuccessMessage string `json:"success_message"`
 	}
 	DataTimeTrend struct {
-		HasCache     bool            `json:"has_cache"`
-		TimeTrend    map[int64]int64 `json:"time_trend"`
-		EstimateRPS  int64           `json:"estimate_rps"`
-		ThresholdRPS int64           `json:"threshold_rps"`
-		LimitTrend   int             `json:"limit_trend"`
+		ReachThresholdRPS bool            `json:"reach_threshold_rps"`
+		HasCache          bool            `json:"has_cache"`
+		TimeTrend         map[int64]int64 `json:"time_trend"`
+		EstimateRPS       int64           `json:"estimate_rps"`
+		ThresholdRPS      int64           `json:"threshold_rps"`
+		LimitTrend        int             `json:"limit_trend"`
 	}
 )

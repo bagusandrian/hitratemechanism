@@ -15,6 +15,7 @@ type (
 		RedisConfig rueidis.ClientOption
 	}
 	Config struct {
+		MaxMemoryUsage    int
 		DefaultExpiration time.Duration
 		CleanupInterval   time.Duration
 		PrefixKey         string

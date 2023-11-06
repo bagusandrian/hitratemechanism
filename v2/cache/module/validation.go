@@ -33,7 +33,14 @@ func (u *usecase) CacheValidateTrend(ctx context.Context, req m.RequestCheck) (r
 			}
 		}
 		u.cacheSetDataTrend(ctx, req.Key, data)
-	} else if !data.HasCache {
+		return m.Response{
+			ResponseTime:   time.Since(now).String(),
+			SuccessMessage: successMessage,
+			Error:          nil,
+			DataTimeTrend:  data,
+		}
+	}
+	if !data.ReachThresholdRPS {
 		for i := int64(0); i <= int64(data.LimitTrend-1); i++ {
 			if i <= 3 {
 				data.TimeTrend[i] = data.TimeTrend[i+1]
@@ -42,13 +49,13 @@ func (u *usecase) CacheValidateTrend(ctx context.Context, req m.RequestCheck) (r
 			}
 		}
 		if data.EstimateRPS > req.ThresholdRPS {
-			data.HasCache = true
-			successMessage = fmt.Sprintf("no need set again! data.HasCache: %t\n", data.HasCache)
+			data.ReachThresholdRPS = true
+			successMessage = fmt.Sprintf("no need set again! data.ReachThresholdRPS: %t\n", data.ReachThresholdRPS)
 		}
 		u.cacheSetDataTrend(ctx, req.Key, data)
 
-	} else if data.HasCache {
-		successMessage = fmt.Sprintf("no need set again! data.HasCache: %t\n", data.HasCache)
+	} else {
+		successMessage = fmt.Sprintf("no need set again! data.ReachThresholdRPS: %t\n", data.ReachThresholdRPS)
 	}
 
 	// log.Printf("no need set again! data.HasCache: %t\n", data.HasCache)
@@ -63,7 +70,8 @@ func (u *usecase) CacheValidateTrend(ctx context.Context, req m.RequestCheck) (r
 func (u *usecase) cacheGetDataTrend(ctx context.Context, key string) (result m.DataTimeTrend, err error) {
 	result = m.DataTimeTrend{}
 	result.TimeTrend = make(map[int64]int64)
-	item, found := u.Cache.Get(u.generateKey(ctx, key))
+	item, found := u.GoCache.Get(u.generateKey(ctx, key))
+	// item, found := u.Cache.Get(u.generateKey(ctx, key))
 	if !found {
 		return result, nil
 	}
@@ -76,7 +84,8 @@ func (u *usecase) cacheGetDataTrend(ctx context.Context, key string) (result m.D
 
 func (u *usecase) cacheSetDataTrend(ctx context.Context, key string, value m.DataTimeTrend) {
 	v, _ := u.jsoni.Marshal(value)
-	u.Cache.Set(u.generateKey(ctx, key), v, u.Conf.DefaultExpiration)
+	u.GoCache.SetWithTTL(u.generateKey(ctx, key), v, u.Conf.DefaultExpiration)
+	// u.Cache.Set(u.generateKey(ctx, key), v, u.Conf.DefaultExpiration)
 	return
 }
 
