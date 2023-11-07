@@ -39,25 +39,25 @@ func (u *usecase) CacheValidateTrend(ctx context.Context, req m.RequestCheck) (r
 			Error:          nil,
 			DataTimeTrend:  data,
 		}
-	}
-	if !data.ReachThresholdRPS {
-		for i := int64(0); i <= int64(data.LimitTrend-1); i++ {
-			if i <= 3 {
-				data.TimeTrend[i] = data.TimeTrend[i+1]
-			} else {
-				data.TimeTrend[i] = time.Now().UnixMilli()
+	} else {
+		if !data.ReachThresholdRPS {
+			for i := int64(0); i <= int64(data.LimitTrend-1); i++ {
+				if i <= 3 {
+					data.TimeTrend[i] = data.TimeTrend[i+1]
+				} else {
+					data.TimeTrend[i] = time.Now().UnixMilli()
+				}
 			}
-		}
-		if data.EstimateRPS > req.ThresholdRPS {
-			data.ReachThresholdRPS = true
+			if data.EstimateRPS > req.ThresholdRPS {
+				data.ReachThresholdRPS = true
+				successMessage = fmt.Sprintf("no need set again! data.ReachThresholdRPS: %t\n", data.ReachThresholdRPS)
+			}
+			u.cacheSetDataTrend(ctx, req, data)
+
+		} else {
 			successMessage = fmt.Sprintf("no need set again! data.ReachThresholdRPS: %t\n", data.ReachThresholdRPS)
 		}
-		u.cacheSetDataTrend(ctx, req, data)
-
-	} else {
-		successMessage = fmt.Sprintf("no need set again! data.ReachThresholdRPS: %t\n", data.ReachThresholdRPS)
 	}
-
 	// log.Printf("no need set again! data.HasCache: %t\n", data.HasCache)
 	return m.Response{
 		ResponseTime:   time.Since(now).String(),
