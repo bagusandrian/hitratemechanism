@@ -63,14 +63,27 @@ func Test_usecase_calculateRPS(t *testing.T) {
 	}{
 		// TODO: Add test cases.
 		{
-			name: "happy flow",
+			name: "low RPS",
 			args: args{
 				timeTrend: map[int64]int64{
-					int64(0): 12345,
-					int64(1): 12346,
-					int64(2): 12347,
-					int64(3): 12348,
-					int64(4): 12349,
+					int64(0): 1699347180000,
+					int64(1): 1699347181000,
+					int64(2): 1699347182000,
+					int64(3): 1699347183000,
+					int64(4): 1699347184000,
+				},
+			},
+			want: 1,
+		},
+		{
+			name: "high RPS",
+			args: args{
+				timeTrend: map[int64]int64{
+					int64(0): 1699347180000,
+					int64(1): 1699347180100,
+					int64(2): 1699347180100,
+					int64(3): 1699347180100,
+					int64(4): 1699347180100,
 				},
 			},
 			want: 50,

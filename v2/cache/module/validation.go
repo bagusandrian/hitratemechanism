@@ -90,7 +90,6 @@ func (u *usecase) cacheSetDataTrend(ctx context.Context, req m.RequestCheck, val
 	}
 	v, _ := u.jsoni.Marshal(value)
 	u.GoCache.SetWithTTL(u.generateKey(ctx, req.Key), v, TTL)
-	return
 }
 
 func (u *usecase) calculateRPS(timeTrend map[int64]int64) int64 {
@@ -108,7 +107,7 @@ func (u *usecase) calculateRPS(timeTrend map[int64]int64) int64 {
 	if fristTime == lastTime {
 		return 0
 	}
-	result := 1000 / (lastTime - fristTime) / len
+	result := 1000 / ((lastTime - fristTime) / len)
 	return result
 }
 
