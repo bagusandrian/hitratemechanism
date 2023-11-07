@@ -17,7 +17,7 @@ func (u *usecase) CacheValidateTrend(ctx context.Context, req m.RequestCheck) (r
 			Error:        err,
 		}
 	}
-	if len(data.TimeTrend) > 1 {
+	if len(data.TimeTrend) > 2 {
 		data.EstimateRPS = u.calculateRPS(data.TimeTrend)
 	}
 	var successMessage string
@@ -32,7 +32,7 @@ func (u *usecase) CacheValidateTrend(ctx context.Context, req m.RequestCheck) (r
 				break
 			}
 		}
-		u.cacheSetDataTrend(ctx, req.Key, data)
+		u.cacheSetDataTrend(ctx, req, data)
 		return m.Response{
 			ResponseTime:   time.Since(now).String(),
 			SuccessMessage: successMessage,
@@ -52,7 +52,7 @@ func (u *usecase) CacheValidateTrend(ctx context.Context, req m.RequestCheck) (r
 			data.ReachThresholdRPS = true
 			successMessage = fmt.Sprintf("no need set again! data.ReachThresholdRPS: %t\n", data.ReachThresholdRPS)
 		}
-		u.cacheSetDataTrend(ctx, req.Key, data)
+		u.cacheSetDataTrend(ctx, req, data)
 
 	} else {
 		successMessage = fmt.Sprintf("no need set again! data.ReachThresholdRPS: %t\n", data.ReachThresholdRPS)
@@ -71,7 +71,6 @@ func (u *usecase) cacheGetDataTrend(ctx context.Context, key string) (result m.D
 	result = m.DataTimeTrend{}
 	result.TimeTrend = make(map[int64]int64)
 	item, found := u.GoCache.Get(u.generateKey(ctx, key))
-	// item, found := u.Cache.Get(u.generateKey(ctx, key))
 	if !found {
 		return result, nil
 	}
@@ -82,16 +81,34 @@ func (u *usecase) cacheGetDataTrend(ctx context.Context, key string) (result m.D
 	return result, nil
 }
 
-func (u *usecase) cacheSetDataTrend(ctx context.Context, key string, value m.DataTimeTrend) {
+func (u *usecase) cacheSetDataTrend(ctx context.Context, req m.RequestCheck, value m.DataTimeTrend) {
+	var TTL time.Duration
+	if req.TTLCache > 0 {
+		TTL = req.TTLCache
+	} else {
+		TTL = u.Conf.DefaultExpiration
+	}
 	v, _ := u.jsoni.Marshal(value)
-	u.GoCache.SetWithTTL(u.generateKey(ctx, key), v, u.Conf.DefaultExpiration)
-	// u.Cache.Set(u.generateKey(ctx, key), v, u.Conf.DefaultExpiration)
+	u.GoCache.SetWithTTL(u.generateKey(ctx, req.Key), v, TTL)
 	return
 }
 
 func (u *usecase) calculateRPS(timeTrend map[int64]int64) int64 {
+	var fristTime, lastTime int64
 	len := int64(len(timeTrend))
-	result := 1000 / ((timeTrend[(len-1)] - timeTrend[0]) / len)
+	if v, ok := timeTrend[0]; ok {
+		fristTime = v
+	}
+	if v, ok := timeTrend[len-1]; ok {
+		lastTime = v
+	}
+	if len < 2 {
+		return 0
+	}
+	if fristTime == lastTime {
+		return 0
+	}
+	result := 1000 / (lastTime - fristTime) / len
 	return result
 }
 
