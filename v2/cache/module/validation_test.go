@@ -2,6 +2,7 @@ package module
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"testing"
 	"time"
@@ -326,6 +327,169 @@ func Test_usecase_cacheGetDataTrend(t *testing.T) {
 			if !reflect.DeepEqual(gotResult, tt.wantResult) {
 				t.Errorf("usecase.cacheGetDataTrend() = %v, want %v", gotResult, tt.wantResult)
 			}
+		})
+	}
+}
+
+func Test_usecase_CacheValidateTrend(t *testing.T) {
+	type fields struct {
+		Conf    m.Config
+		jsoni   jsoniter.API
+		GoCache *goCache.Cache
+	}
+	type args struct {
+		ctx context.Context
+		req m.RequestCheck
+	}
+	tests := []struct {
+		name     string
+		fields   fields
+		args     args
+		mockFunc func(*usecase, m.Config, m.RequestCheck)
+		wantResp m.Response
+		wantErr  bool
+	}{
+		// TODO: Add test cases.
+		{
+			name: "error cache data",
+			fields: fields{
+				Conf: m.Config{
+					PrefixKey: "testing",
+				},
+				jsoni:   jsoniter.ConfigCompatibleWithStandardLibrary,
+				GoCache: goCache.NewCache().WithMaxMemoryUsage(1000).WithEvictionPolicy(goCache.LeastRecentlyUsed),
+			},
+			mockFunc: func(u *usecase, conf m.Config, req m.RequestCheck) {
+				val := "testing"
+				v, _ := u.jsoni.Marshal(val)
+				u.GoCache.Set(fmt.Sprintf("%s:%s", conf.PrefixKey, req.Key), v)
+			},
+			wantErr: true,
+		},
+		{
+			name: "happy flow",
+			fields: fields{
+				Conf: m.Config{
+					PrefixKey:  "testing",
+					LimitTrend: 5,
+				},
+				jsoni:   jsoniter.ConfigCompatibleWithStandardLibrary,
+				GoCache: goCache.NewCache().WithMaxMemoryUsage(1000).WithEvictionPolicy(goCache.LeastRecentlyUsed),
+			},
+			mockFunc: func(u *usecase, conf m.Config, req m.RequestCheck) {
+				val := m.DataTimeTrend{
+					TimeTrend: map[int64]int64{
+						0: 12345,
+						1: 12345,
+						2: 12345,
+						3: 12345,
+						4: 12345,
+					},
+				}
+				v, _ := u.jsoni.Marshal(val)
+				u.GoCache.Set(fmt.Sprintf("%s:%s", conf.PrefixKey, req.Key), v)
+			},
+			wantErr: false,
+		},
+		{
+			name: "time trend < limitTrend",
+			fields: fields{
+				Conf: m.Config{
+					PrefixKey:  "testing",
+					LimitTrend: 5,
+				},
+				jsoni:   jsoniter.ConfigCompatibleWithStandardLibrary,
+				GoCache: goCache.NewCache().WithMaxMemoryUsage(1000).WithEvictionPolicy(goCache.LeastRecentlyUsed),
+			},
+			mockFunc: func(u *usecase, conf m.Config, req m.RequestCheck) {
+				val := m.DataTimeTrend{
+					TimeTrend: map[int64]int64{
+						0: 12345,
+					},
+				}
+				v, _ := u.jsoni.Marshal(val)
+				u.GoCache.Set(fmt.Sprintf("%s:%s", conf.PrefixKey, req.Key), v)
+			},
+			wantErr: false,
+		},
+		{
+			name: "ReachThresholdRPS",
+			fields: fields{
+				Conf: m.Config{
+					PrefixKey:  "testing",
+					LimitTrend: 5,
+				},
+				jsoni:   jsoniter.ConfigCompatibleWithStandardLibrary,
+				GoCache: goCache.NewCache().WithMaxMemoryUsage(1000).WithEvictionPolicy(goCache.LeastRecentlyUsed),
+			},
+			mockFunc: func(u *usecase, conf m.Config, req m.RequestCheck) {
+				val := m.DataTimeTrend{
+					TimeTrend: map[int64]int64{
+						int64(0): 1699347180000,
+						int64(1): 1699347180100,
+						int64(2): 1699347180100,
+						int64(3): 1699347180100,
+						int64(4): 1699347180100,
+					},
+					ReachThresholdRPS: true,
+				}
+				v, _ := u.jsoni.Marshal(val)
+				u.GoCache.Set(fmt.Sprintf("%s:%s", conf.PrefixKey, req.Key), v)
+			},
+			wantErr: false,
+		},
+		{
+			name: "ReachThresholdRPS",
+			fields: fields{
+				Conf: m.Config{
+					PrefixKey:  "testing",
+					LimitTrend: 5,
+				},
+				jsoni:   jsoniter.ConfigCompatibleWithStandardLibrary,
+				GoCache: goCache.NewCache().WithMaxMemoryUsage(1000).WithEvictionPolicy(goCache.LeastRecentlyUsed),
+			},
+			mockFunc: func(u *usecase, conf m.Config, req m.RequestCheck) {
+				val := m.DataTimeTrend{
+					TimeTrend: map[int64]int64{
+						int64(0): 1699347180000,
+						int64(1): 1699347180100,
+						int64(2): 1699347180100,
+						int64(3): 1699347180100,
+						int64(4): 1699347180100,
+					},
+					ReachThresholdRPS: false,
+				}
+				v, _ := u.jsoni.Marshal(val)
+				u.GoCache.Set(fmt.Sprintf("%s:%s", conf.PrefixKey, req.Key), v)
+			},
+			args: args{
+				ctx: context.Background(),
+				req: m.RequestCheck{
+					Key:          "testing",
+					ThresholdRPS: 10,
+					TTLCache:     1 * time.Second,
+				},
+			},
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			u := &usecase{
+				Conf:    tt.fields.Conf,
+				jsoni:   tt.fields.jsoni,
+				GoCache: tt.fields.GoCache,
+			}
+			defer u.GoCache.Clear()
+			tt.mockFunc(u, tt.fields.Conf, tt.args.req)
+			gotResp := u.CacheValidateTrend(tt.args.ctx, tt.args.req)
+			if !tt.wantErr && gotResp.Error != nil {
+				t.Errorf("usecase.CacheValidateTrend() expect no error but result is err: %+v\n", gotResp.Error)
+			}
+			if tt.wantErr && gotResp.Error == nil {
+				t.Errorf("usecase.CacheValidateTrend() expect error but result is err: nil")
+			}
+
 		})
 	}
 }
