@@ -58,7 +58,6 @@ func (u *usecase) CacheValidateTrend(ctx context.Context, req m.RequestCheck) (r
 			successMessage = fmt.Sprintf("no need set again! data.ReachThresholdRPS: %t\n", data.ReachThresholdRPS)
 		}
 	}
-	// log.Printf("no need set again! data.HasCache: %t\n", data.HasCache)
 	return m.Response{
 		ResponseTime:   time.Since(now).String(),
 		SuccessMessage: successMessage,
