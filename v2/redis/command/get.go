@@ -14,6 +14,5 @@ func (u *usecase) Get(ctx context.Context, req m.RequestCheck) (resp rueidis.Red
 	} else {
 		resp = u.Redis.Do(ctx, u.Redis.B().Get().Key(req.Key).Build())
 	}
-	cacheData.DataTimeTrend.HasCache = resp.IsCacheHit()
 	return resp, cacheData
 }

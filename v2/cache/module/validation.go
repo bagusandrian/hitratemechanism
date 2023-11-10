@@ -2,7 +2,6 @@ package module
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	m "github.com/bagusandrian/hitratemechanism/v2/model"
@@ -10,6 +9,7 @@ import (
 
 func (u *usecase) CacheValidateTrend(ctx context.Context, req m.RequestCheck) (resp m.Response) {
 	now := time.Now()
+	successMessage := "no need set again on local cache, already reach threshold!"
 	data, err := u.cacheGetDataTrend(ctx, req.Key)
 	if err != nil {
 		return m.Response{
@@ -17,10 +17,17 @@ func (u *usecase) CacheValidateTrend(ctx context.Context, req m.RequestCheck) (r
 			Error:        err,
 		}
 	}
+	if data.ReachThresholdRPS {
+		return m.Response{
+			ResponseTime:   time.Since(now).String(),
+			SuccessMessage: successMessage,
+			Error:          nil,
+			DataTimeTrend:  data,
+		}
+	}
 	if len(data.TimeTrend) > 2 {
 		data.EstimateRPS = u.calculateRPS(data.TimeTrend)
 	}
-	var successMessage string
 	data.ThresholdRPS = req.ThresholdRPS
 	data.LimitTrend = u.Conf.LimitTrend
 	if len(data.TimeTrend) < u.Conf.LimitTrend {
@@ -35,7 +42,7 @@ func (u *usecase) CacheValidateTrend(ctx context.Context, req m.RequestCheck) (r
 		u.cacheSetDataTrend(ctx, req, data)
 		return m.Response{
 			ResponseTime:   time.Since(now).String(),
-			SuccessMessage: successMessage,
+			SuccessMessage: "",
 			Error:          nil,
 			DataTimeTrend:  data,
 		}
@@ -50,12 +57,9 @@ func (u *usecase) CacheValidateTrend(ctx context.Context, req m.RequestCheck) (r
 			}
 			if data.EstimateRPS > req.ThresholdRPS {
 				data.ReachThresholdRPS = true
-				successMessage = fmt.Sprintf("no need set again! data.ReachThresholdRPS: %t\n", data.ReachThresholdRPS)
 			}
 			u.cacheSetDataTrend(ctx, req, data)
 
-		} else {
-			successMessage = fmt.Sprintf("no need set again! data.ReachThresholdRPS: %t\n", data.ReachThresholdRPS)
 		}
 	}
 	return m.Response{
@@ -94,13 +98,17 @@ func (u *usecase) cacheSetDataTrend(ctx context.Context, req m.RequestCheck, val
 func (u *usecase) calculateRPS(timeTrend map[int64]int64) int64 {
 	var fristTime, lastTime int64
 	len := int64(len(timeTrend))
+	if len < 2 {
+		return 0
+	}
 	if v, ok := timeTrend[0]; ok {
 		fristTime = v
+	} else {
+		return 0
 	}
 	if v, ok := timeTrend[len-1]; ok {
 		lastTime = v
-	}
-	if len < 2 {
+	} else {
 		return 0
 	}
 	if fristTime == lastTime {
@@ -111,5 +119,5 @@ func (u *usecase) calculateRPS(timeTrend map[int64]int64) int64 {
 }
 
 func (u *usecase) generateKey(ctx context.Context, key string) string {
-	return fmt.Sprintf("%s:%s", u.Conf.PrefixKey, key)
+	return u.Conf.PrefixKey + ":" + key
 }

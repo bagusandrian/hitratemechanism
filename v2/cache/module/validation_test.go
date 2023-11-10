@@ -121,6 +121,23 @@ func Test_usecase_calculateRPS(t *testing.T) {
 			},
 			want: 0,
 		},
+		{
+			name: "no data",
+			args: args{
+				timeTrend: map[int64]int64{},
+			},
+			want: 0,
+		},
+		{
+			name: "only 1 data",
+			args: args{
+				timeTrend: map[int64]int64{
+					int64(0): 12345,
+					int64(1): 0,
+				},
+			},
+			want: 0,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -279,7 +296,6 @@ func Test_usecase_cacheGetDataTrend(t *testing.T) {
 			wantErr: true,
 			wantResult: m.DataTimeTrend{
 				ReachThresholdRPS: false,
-				HasCache:          false,
 				TimeTrend:         make(map[int64]int64),
 				EstimateRPS:       0,
 				ThresholdRPS:      0,
@@ -301,7 +317,6 @@ func Test_usecase_cacheGetDataTrend(t *testing.T) {
 			},
 			wantResult: m.DataTimeTrend{
 				ReachThresholdRPS: false,
-				HasCache:          false,
 				TimeTrend:         make(map[int64]int64),
 				EstimateRPS:       0,
 				ThresholdRPS:      0,
