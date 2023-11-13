@@ -104,7 +104,11 @@ func (u *usecase) calculateRPS(timeTrend map[int64]int64) int64 {
 	if fristTime == lastTime {
 		return 0
 	}
-	result := 1000 / ((lastTime - fristTime) / len)
+	avg := (lastTime - fristTime) / len
+	if avg <= 0 {
+		return 0
+	}
+	result := 1000 / avg
 	return result
 }
 
