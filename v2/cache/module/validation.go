@@ -10,13 +10,7 @@ import (
 func (u *usecase) CacheValidateTrend(ctx context.Context, req m.RequestCheck) (resp m.Response) {
 	now := time.Now()
 	successMessage := "no need set again on local cache, already reach threshold!"
-	data, err := u.cacheGetDataTrend(ctx, req.Key)
-	if err != nil {
-		return m.Response{
-			ResponseTime: time.Since(now).String(),
-			Error:        err,
-		}
-	}
+	data := u.cacheGetDataTrend(ctx, req.Key)
 	if data.ReachThresholdRPS {
 		return m.Response{
 			ResponseTime:   time.Since(now).String(),
@@ -70,18 +64,15 @@ func (u *usecase) CacheValidateTrend(ctx context.Context, req m.RequestCheck) (r
 	}
 }
 
-func (u *usecase) cacheGetDataTrend(ctx context.Context, key string) (result m.DataTimeTrend, err error) {
+func (u *usecase) cacheGetDataTrend(ctx context.Context, key string) (result m.DataTimeTrend) {
 	result = m.DataTimeTrend{}
 	result.TimeTrend = make(map[int64]int64)
 	item, found := u.GoCache.Get(u.generateKey(ctx, key))
 	if !found {
-		return result, nil
+		return result
 	}
-	err = u.jsoni.Unmarshal(item.([]byte), &result)
-	if err != nil {
-		return result, err
-	}
-	return result, nil
+	result = item.(m.DataTimeTrend)
+	return result
 }
 
 func (u *usecase) cacheSetDataTrend(ctx context.Context, req m.RequestCheck, value m.DataTimeTrend) {
@@ -91,8 +82,7 @@ func (u *usecase) cacheSetDataTrend(ctx context.Context, req m.RequestCheck, val
 	} else {
 		TTL = u.Conf.DefaultExpiration
 	}
-	v, _ := u.jsoni.Marshal(value)
-	u.GoCache.SetWithTTL(u.generateKey(ctx, req.Key), v, TTL)
+	u.GoCache.SetWithTTL(u.generateKey(ctx, req.Key), value, TTL)
 }
 
 func (u *usecase) calculateRPS(timeTrend map[int64]int64) int64 {

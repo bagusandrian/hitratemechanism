@@ -271,35 +271,7 @@ func Test_usecase_cacheGetDataTrend(t *testing.T) {
 						int64(4): 1000,
 					},
 				}
-				v, _ := u.jsoni.Marshal(val)
-				u.GoCache.Set("testing:testing", v)
-			},
-		},
-		{
-			name: "error unmarshal",
-			fields: fields{
-				Conf: m.Config{
-					PrefixKey: "testing",
-				},
-				jsoni:   jsoniter.ConfigCompatibleWithStandardLibrary,
-				GoCache: goCache.NewCache().WithMaxMemoryUsage(1000).WithEvictionPolicy(goCache.LeastRecentlyUsed),
-			},
-			args: args{
-				ctx: context.Background(),
-				key: "testing",
-			},
-			mock: func(u *usecase) {
-				val := "error unmarshal"
-				v, _ := u.jsoni.Marshal(val)
-				u.GoCache.Set("testing:testing", v)
-			},
-			wantErr: true,
-			wantResult: m.DataTimeTrend{
-				ReachThresholdRPS: false,
-				TimeTrend:         make(map[int64]int64),
-				EstimateRPS:       0,
-				ThresholdRPS:      0,
-				LimitTrend:        0,
+				u.GoCache.Set("testing:testing", val)
 			},
 		},
 		{
@@ -334,11 +306,8 @@ func Test_usecase_cacheGetDataTrend(t *testing.T) {
 			}
 			tt.mock(u)
 			defer u.GoCache.Clear()
-			gotResult, err := u.cacheGetDataTrend(tt.args.ctx, tt.args.key)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("usecase.cacheGetDataTrend() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
+			gotResult := u.cacheGetDataTrend(tt.args.ctx, tt.args.key)
+
 			if !reflect.DeepEqual(gotResult, tt.wantResult) {
 				t.Errorf("usecase.cacheGetDataTrend() = %v, want %v", gotResult, tt.wantResult)
 			}
@@ -366,22 +335,6 @@ func Test_usecase_CacheValidateTrend(t *testing.T) {
 	}{
 		// TODO: Add test cases.
 		{
-			name: "error cache data",
-			fields: fields{
-				Conf: m.Config{
-					PrefixKey: "testing",
-				},
-				jsoni:   jsoniter.ConfigCompatibleWithStandardLibrary,
-				GoCache: goCache.NewCache().WithMaxMemoryUsage(1000).WithEvictionPolicy(goCache.LeastRecentlyUsed),
-			},
-			mockFunc: func(u *usecase, conf m.Config, req m.RequestCheck) {
-				val := "testing"
-				v, _ := u.jsoni.Marshal(val)
-				u.GoCache.Set(fmt.Sprintf("%s:%s", conf.PrefixKey, req.Key), v)
-			},
-			wantErr: true,
-		},
-		{
 			name: "happy flow",
 			fields: fields{
 				Conf: m.Config{
@@ -401,8 +354,7 @@ func Test_usecase_CacheValidateTrend(t *testing.T) {
 						4: 12345,
 					},
 				}
-				v, _ := u.jsoni.Marshal(val)
-				u.GoCache.Set(fmt.Sprintf("%s:%s", conf.PrefixKey, req.Key), v)
+				u.GoCache.Set(fmt.Sprintf("%s:%s", conf.PrefixKey, req.Key), val)
 			},
 			wantErr: false,
 		},
@@ -422,8 +374,7 @@ func Test_usecase_CacheValidateTrend(t *testing.T) {
 						0: 12345,
 					},
 				}
-				v, _ := u.jsoni.Marshal(val)
-				u.GoCache.Set(fmt.Sprintf("%s:%s", conf.PrefixKey, req.Key), v)
+				u.GoCache.Set(fmt.Sprintf("%s:%s", conf.PrefixKey, req.Key), val)
 			},
 			wantErr: false,
 		},
@@ -448,8 +399,7 @@ func Test_usecase_CacheValidateTrend(t *testing.T) {
 					},
 					ReachThresholdRPS: true,
 				}
-				v, _ := u.jsoni.Marshal(val)
-				u.GoCache.Set(fmt.Sprintf("%s:%s", conf.PrefixKey, req.Key), v)
+				u.GoCache.Set(fmt.Sprintf("%s:%s", conf.PrefixKey, req.Key), val)
 			},
 			wantErr: false,
 		},
@@ -474,8 +424,7 @@ func Test_usecase_CacheValidateTrend(t *testing.T) {
 					},
 					ReachThresholdRPS: false,
 				}
-				v, _ := u.jsoni.Marshal(val)
-				u.GoCache.Set(fmt.Sprintf("%s:%s", conf.PrefixKey, req.Key), v)
+				u.GoCache.Set(fmt.Sprintf("%s:%s", conf.PrefixKey, req.Key), val)
 			},
 			args: args{
 				ctx: context.Background(),
