@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	m "github.com/bagusandrian/hitratemechanism/v2/model"
+	m "github.com/bagusandrian/hitratemechanism/model"
 )
 
 func TestNew(t *testing.T) {

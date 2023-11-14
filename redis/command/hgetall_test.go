@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	hCache "github.com/bagusandrian/hitratemechanism/v2/cache"
-	m "github.com/bagusandrian/hitratemechanism/v2/model"
+	hCache "github.com/bagusandrian/hitratemechanism/cache"
+	m "github.com/bagusandrian/hitratemechanism/model"
 	"github.com/go-redis/redismock/v9"
 	"github.com/redis/rueidis"
 	"github.com/redis/rueidis/mock"

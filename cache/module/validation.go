@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	m "github.com/bagusandrian/hitratemechanism/v2/model"
+	m "github.com/bagusandrian/hitratemechanism/model"
 )
 
 func (u *usecase) CacheValidateTrend(ctx context.Context, req m.RequestCheck) (resp m.Response) {

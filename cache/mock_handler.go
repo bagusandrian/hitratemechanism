@@ -5,7 +5,7 @@ package cache
 import (
 	context "context"
 
-	model "github.com/bagusandrian/hitratemechanism/v2/model"
+	model "github.com/bagusandrian/hitratemechanism/model"
 	mock "github.com/stretchr/testify/mock"
 )
 

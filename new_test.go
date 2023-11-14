@@ -1,10 +1,10 @@
-package v2
+package hitratemechanism
 
 import (
 	"testing"
 	"time"
 
-	"github.com/bagusandrian/hitratemechanism/v2/model"
+	"github.com/bagusandrian/hitratemechanism/model"
 	"github.com/go-redis/redismock/v9"
 	"github.com/redis/rueidis"
 	"github.com/redis/rueidis/mock"

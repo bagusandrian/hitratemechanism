@@ -3,7 +3,7 @@ package command
 import (
 	"context"
 
-	m "github.com/bagusandrian/hitratemechanism/v2/model"
+	m "github.com/bagusandrian/hitratemechanism/model"
 	"github.com/redis/rueidis"
 )
 

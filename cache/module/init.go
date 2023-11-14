@@ -2,8 +2,8 @@ package module
 
 import (
 	goCache "github.com/TwiN/gocache/v2"
-	"github.com/bagusandrian/hitratemechanism/v2/cache"
-	m "github.com/bagusandrian/hitratemechanism/v2/model"
+	"github.com/bagusandrian/hitratemechanism/cache"
+	m "github.com/bagusandrian/hitratemechanism/model"
 	jsoniterpackage "github.com/json-iterator/go"
 )
 

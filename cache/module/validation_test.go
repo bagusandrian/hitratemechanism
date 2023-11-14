@@ -8,7 +8,7 @@ import (
 	"time"
 
 	goCache "github.com/TwiN/gocache/v2"
-	m "github.com/bagusandrian/hitratemechanism/v2/model"
+	m "github.com/bagusandrian/hitratemechanism/model"
 	jsoniter "github.com/json-iterator/go"
 )
 

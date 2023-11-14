@@ -1,9 +1,9 @@
-package v2
+package hitratemechanism
 
 import (
-	"github.com/bagusandrian/hitratemechanism/v2/model"
-	hRedis "github.com/bagusandrian/hitratemechanism/v2/redis"
-	uRedis "github.com/bagusandrian/hitratemechanism/v2/redis/command"
+	"github.com/bagusandrian/hitratemechanism/model"
+	hRedis "github.com/bagusandrian/hitratemechanism/redis"
+	uRedis "github.com/bagusandrian/hitratemechanism/redis/command"
 )
 
 var usecaseHRM Usecase

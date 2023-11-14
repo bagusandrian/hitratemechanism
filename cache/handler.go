@@ -3,7 +3,7 @@ package cache
 import (
 	"context"
 
-	m "github.com/bagusandrian/hitratemechanism/v2/model"
+	m "github.com/bagusandrian/hitratemechanism/model"
 )
 
 //go:generate mockery --name=Handler --filename=mock_handler.go --inpackage

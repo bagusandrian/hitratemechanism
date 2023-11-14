@@ -3,10 +3,10 @@ package command
 import (
 	"log"
 
-	hCache "github.com/bagusandrian/hitratemechanism/v2/cache"
-	uCache "github.com/bagusandrian/hitratemechanism/v2/cache/module"
-	m "github.com/bagusandrian/hitratemechanism/v2/model"
-	"github.com/bagusandrian/hitratemechanism/v2/redis"
+	hCache "github.com/bagusandrian/hitratemechanism/cache"
+	uCache "github.com/bagusandrian/hitratemechanism/cache/module"
+	m "github.com/bagusandrian/hitratemechanism/model"
+	"github.com/bagusandrian/hitratemechanism/redis"
 	"github.com/redis/rueidis"
 )
 
