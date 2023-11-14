@@ -1,198 +1,111 @@
+# Hitrate Mechanism Library with Client-Side Cache and Real-Time RPS Estimation
 
-# HitRateMechanism
+## Overview
 
-A hit rate mechanism is a technique used to track the frequency with which certain events or data are accessed, with the goal of optimizing performance by reducing the amount of time spent accessing or processing less frequently used items. One common use case for hit rate mechanisms to define traffic comming into your apps is high or not, and u can decide if traffic indicate with high traffic, u can handle it. 
-## Authors
+Welcome to the Hitrate Mechanism Library, a powerful tool for optimizing Redis performance by combining client-side caching and real-time Requests Per Second (RPS) estimation. This library intelligently decides when to cache data locally, preventing memory bloat and improving overall system efficiency.
 
-- [@bagusandrian](https://www.github.com/bagusandrian)
-
-
-## Pre Requisite
-- Golang min version 1.16
-- redis min version 6.0
 ## Features
 
-- Calculation of RPS
-- Indication of high hraffic
-- Auto add TTL of key redis target
+- **Client-Side Caching:** Store frequently accessed data in local memory.
+- **Real-Time RPS Estimation:** Dynamically calculate RPS to make informed caching decisions.
+- **Configurable Parameters:** Easily adjust parameters such as time trend length, threshold RPS, and TTL for key memory checking.
 
+## Getting Started
 
-## Installation
+Follow these steps to integrate the library into your Redis-based application:
 
-Install Hitratemechanism using the "go get" command"
+1. Clone the repository:
+	```bash
+	git clone https://github.com/bagusandrian/hitratemechanism.git
+	```
 
-```bash
-  go get hightub.com/bagusandrian/hitratemechanism
-```
-    
-## Usage/Examples
-This is for example of usage hrm on your implementation. I give u example create 1 endpoint and optimize using hrm: 
+2. Write code on your golang code: 
+	```golang
+	package main
 
-```go
-package main
+	import (
+		hrm "github.com/bagusandrian/hitratemechanism"
+		hrmModel "github.com/bagusandrian/hitratemechanism/model"
+	)
 
-import (
-	"context"
-	"encoding/json"
-	"fmt"
-	"log"
-	"math/rand"
-	"net/http"
-	"strconv"
-	"time"
-
-	"github.com/rueian/rueidis"
-
-	hrm "github.com/bagusandrian/hitratemechanism"
-)
-
-const (
-	KeyPrimary  = "product_active"
-	Prefix      = "hitrate"
-	HostRedis   = "localhost:6379"
-	RedisDBName = "local"
-)
-
-var (
-	client rueidis.Client
-)
-
-type Fields struct {
-	ProductID     int64
-	OriginalPrice float64
-	StartDate     string
-	EndDate       string
-}
-
-func init() {
-	ctx := context.Background()
-	var err error
-	client, err = rueidis.NewClient(rueidis.ClientOption{
-		InitAddress: []string{HostRedis},
-	})
-	if err != nil {
-		panic(err)
-	}
-	opt := hrm.Options{
-		MaxActiveConn: 100,
-		MaxIdleConn:   10,
-		Timeout:       3,
-		Wait:          true,
-	}
-	hrm.New(RedisDBName, HostRedis, "tcp", opt)
-	buildRedis(ctx)
-}
-func main() {
-	ctx := context.Background()
-	http.HandleFunc("/dummy-api", func(w http.ResponseWriter, r *http.Request) {
-		resp, err := DummyAPI(ctx)
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			return
+	var (
+		client     rueidis.Client
+		HRMUsecase *hrm.Usecase
+	)
+	const (
+		// change base on your connection
+		HostRedis = "127.0.0.1:6379" 
+		PasswordRedis = ""
+		UserNameRedis = "default"
+	)
+	func init() {
+		var err error
+		ctx := context.Background()
+		hrmConfig := &hrmModel.HitRateMechanism{
+			Config: hrmModel.Config{
+				DefaultExpiration: 1 * time.Minute,
+				PrefixKey:         "testing",
+				LimitTrend:        5,
+			},
+			RedisConfig: rueidis.ClientOption{
+				InitAddress: []string{HostRedis},
+				Username:    UserNameRedis,
+				Password:    PasswordRedis,
+			},
 		}
-		log.Println(resp)
-		json.NewEncoder(w).Encode(resp)
+		HRMUsecase = hrm.New(hrmConfig)
+	}
 
-	})
-	log.Println("running server on port :8080")
-	http.ListenAndServe("127.0.0.1:8080", nil)
-}
+	func main() {
+		req := hrmModel.RequestCheck{
+				Key:          "key_redi_that_u_want_to_get",
+				ThresholdRPS: 2,
+				TTLCache:     1 * time.Minute,
+			}
+		redisResult, cacheDebug := HRMUsecase.HandlerRedis.Get(ctx, req)
+		if redisResult.Error() {
+				// handling error redis
+				log.Panic(err)
+			}
+		result := redisResult.String()
+		// will print the result of data from redis
+		log.Printf("%+v\n", result)
+		// will print result of cache debug
+		// {
+		//	"response_time": "20ms"
+		//	"data_time_trend": {
+		//		"reach_threshold_rps": TRUE,
+		//		"time_trend": {
+		//			0: 1234567,
+		//			1: 1234580,
+		//			2: 1234600,
+		//			3: 1234620,
+		//			4: 1234640,
+		//		}
+		//		"estimate_rps": 100
+		//		"threshold_rps": 2
+		//		"limit_trend": 5
+		//	}
+		//	"error": nil
+		//	"success_message": ""
+		// }
+		log.Printf("%+v\n", cacheDebug)
+	}
 
-func DummyAPI(ctx context.Context) (response Fields, err error) {
-	key := genKey()
-	reqHrm := hrm.ReqCustomHitRate{
-		Config: hrm.ConfigCustomHitRate{
-			RedisDBName:       RedisDBName,
-			ExtendTTLKey:      60,
-			ExtendTTLKeyCheck: 30,
-			ParseLayoutTime:   "2006-01-02 15:04:05 Z0700 MST",
-		},
-		Threshold: hrm.ThresholdCustomHitrate{
-			LimitMaxTTL:         300,
-			MaxRPS:              20,
-			LimitExtendTTLCheck: 60,
-		},
-		AttributeKey: hrm.AttributeKeyhitrate{
-			KeyCheck: genKey(),
-			Prefix:   "hitrate",
-		},
-	}
-	respHrm := hrm.Pool.CustomHitRate(reqHrm)
-	if respHrm.Err != nil {
-		log.Println("failed jumpin on custom hitrate")
-	}
-	log.Printf("%+v\n", respHrm)
-	// logic for highTraffic
-	redisResult := make(map[string]string)
-	log.Println("HIGH TRAFFIC indicated:", respHrm.HighTraffic)
-	if respHrm.HighTraffic {
-		// HGETALL myhash
-		resp := client.DoCache(ctx, client.B().Hgetall().Key(key).Cache(), (30 * time.Second))
-		// log.Println(resp.IsCacheHit()) // false
-		// log.Println(resp.AsStrMap())   // map[f:v]
-		redisResult, err = resp.AsStrMap()
-		if err != nil {
-			log.Println("error bos")
-			return
-		}
-	} else {
-		redisResult, err = hrm.Pool.HgetAll(RedisDBName, key)
-	}
-	if len(redisResult) == 0 {
-		buildRedis(ctx)
-		return
-	}
-	response.ProductID, _ = strconv.ParseInt(redisResult["product_id"], 10, 64)
-	response.OriginalPrice, _ = strconv.ParseFloat(redisResult["original_price"], 64)
-	response.StartDate = redisResult["start_time"]
-	response.EndDate = redisResult["end_time"]
-	if !respHrm.HaveMaxDateTTL {
-		endTime, err := time.Parse("2006-01-02 15:04:05 Z0700 MST", response.EndDate)
-		if err != nil {
-			log.Println("err", err)
-			return response, err
-		}
-		hrm.Pool.SetMaxTTLChecker(RedisDBName, Prefix, key, endTime)
-	}
-	return
-}
+	```
 
-func buildRedis(ctx context.Context) {
-	data := make(map[string]map[string]interface{})
-	for i := 0; i < 11; i++ {
-		key := fmt.Sprintf("%s+%d", KeyPrimary, i)
-		data[key] = make(map[string]interface{})
-		data[key]["product_id"] = i
-		data[key]["original_price"] = float64(12000)
-		data[key]["start_time"] = time.Now().Format("2006-01-02 15:04:05 Z0700 MST")
-		data[key]["end_time"] = time.Now().Add(6 * time.Minute).Format("2006-01-02 15:04:05 Z0700 MST")
-
-	}
-	err := hrm.Pool.HmsetWithExpMultiple(RedisDBName, data, 100)
-	if err != nil {
-		log.Println("error", err)
-	}
-}
-
-func genKey() (key string) {
-	key = fmt.Sprintf("%s+%d", KeyPrimary, rand.Intn(10))
-	return
-}
-
+## Benchmark
+Benchmark data i compare with common implementation vs reuidis vs hitratemechanism: 
 ```
-On this binary have endpoint `/dummy-api` and processing get information from redis. But I colaborate with rueidis (combination of redis & memcached) if traffic come to high, i will swich using rueidis but if not i will still using common redis implementation: 
-```
-respHrm := hrm.Pool.CustomHitRate(reqHrm)
-	if respHrm.Err != nil {
-		log.Println("failed jumpin on custom hitrate")
-	}
-	log.Printf("%+v\n", respHrm)
-	// logic for highTraffic
-	redisResult := make(map[string]string)
-	log.Println("HIGH TRAFFIC indicated:", respHrm.HighTraffic)
-	if respHrm.HighTraffic {
-        ...
-    } else {
-        ...
-    }
+goos: darwin
+goarch: arm64
+pkg: github.com/bagusandrian/benchmark_hrm
+BenchmarkNormal-10    	    2931	   3931797 ns/op	   72433 B/op	    1122 allocs/op
+BenchmarkNormal-10    	    3037	   3928153 ns/op	   72413 B/op	    1122 allocs/op
+BenchmarkHrm-10       	  212164	     56128 ns/op	    7747 B/op	     374 allocs/op
+BenchmarkHrm-10       	  213416	     56106 ns/op	    7746 B/op	     374 allocs/op
+BenchmarkCache-10     	  486037	     24577 ns/op	    1936 B/op	     132 allocs/op
+BenchmarkCache-10     	  484736	     24540 ns/op	    1936 B/op	     132 allocs/op
+PASS
+ok  	github.com/bagusandrian/benchmark_hrm	74.287s
 ```
