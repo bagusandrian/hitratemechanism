@@ -14,10 +14,14 @@ type usecase struct {
 }
 
 func New(hrm *m.HitRateMechanism) cache.Handler {
-	jsoni := jsoniterpackage.ConfigCompatibleWithStandardLibrary
+	var MaxMemoryUsage int
+	if hrm.Config.MaxMemoryUsage > 0 {
+		MaxMemoryUsage = hrm.Config.MaxMemoryUsage
+	} else {
+		MaxMemoryUsage = 128 * (1 << 20)
+	}
 	return &usecase{
 		Conf:    hrm.Config,
-		jsoni:   jsoni,
-		GoCache: goCache.NewCache().WithMaxMemoryUsage(hrm.Config.MaxMemoryUsage).WithEvictionPolicy(goCache.LeastRecentlyUsed),
+		GoCache: goCache.NewCache().WithMaxMemoryUsage(MaxMemoryUsage).WithEvictionPolicy(goCache.LeastRecentlyUsed),
 	}
 }
