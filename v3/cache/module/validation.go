@@ -40,6 +40,7 @@ func (u *usecase) CacheValidateTrend(ctx context.Context, req m.RequestCheck) (r
 			SuccessMessage: "",
 			Error:          nil,
 			DataTimeTrend:  data,
+			ClientRedis:    *u.RedisClient,
 		}
 	} else {
 		if !data.ReachThresholdRPS {
@@ -59,9 +60,10 @@ func (u *usecase) CacheValidateTrend(ctx context.Context, req m.RequestCheck) (r
 	}
 	return m.Response{
 		ResponseTime:   time.Since(now).String(),
-		SuccessMessage: successMessage,
+		SuccessMessage: "",
 		Error:          nil,
 		DataTimeTrend:  data,
+		ClientRedis:    *u.RedisClient,
 	}
 }
 
