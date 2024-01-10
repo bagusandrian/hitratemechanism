@@ -1,18 +1,22 @@
 package model
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 type (
 	RequestCheck struct {
-		Key          string
+		Keys         []string
 		ThresholdRPS int64
 		TTLCache     time.Duration
 	}
 	Response struct {
-		ResponseTime   string `json:"response_time"`
-		DataTimeTrend  `json:"data_time_trend"`
-		Error          error  `json:"error"`
-		SuccessMessage string `json:"success_message"`
+		ResponseTime   string                   `json:"response_time"`
+		DataKeys       map[string]DataTimeTrend `json:"data_time_trend"`
+		Error          error                    `json:"error"`
+		SuccessMessage string                   `json:"success_message"`
+		Ctx            context.Context
 	}
 	DataTimeTrend struct {
 		ReachThresholdRPS bool            `json:"reach_threshold_rps"`

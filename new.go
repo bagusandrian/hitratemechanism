@@ -1,20 +1,18 @@
 package hitratemechanism
 
 import (
+	"github.com/bagusandrian/hitratemechanism/cache"
+	uCache "github.com/bagusandrian/hitratemechanism/cache/module"
 	"github.com/bagusandrian/hitratemechanism/model"
-	hRedis "github.com/bagusandrian/hitratemechanism/redis"
-	uRedis "github.com/bagusandrian/hitratemechanism/redis/command"
 )
-
-var usecaseHRM Usecase
 
 type Usecase struct {
 	// handler
-	HandlerRedis hRedis.Handler
+	HandlerCache cache.Handler
 }
 
 func New(hrm *model.HitRateMechanism) *Usecase {
 	return &Usecase{
-		HandlerRedis: uRedis.New(hrm),
+		HandlerCache: uCache.New(hrm),
 	}
 }

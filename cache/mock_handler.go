@@ -28,63 +28,6 @@ func (_m *MockHandler) CacheValidateTrend(ctx context.Context, req model.Request
 	return r0
 }
 
-// cacheGetDataTrend provides a mock function with given fields: ctx, key
-func (_m *MockHandler) cacheGetDataTrend(ctx context.Context, key string) (model.DataTimeTrend, error) {
-	ret := _m.Called(ctx, key)
-
-	var r0 model.DataTimeTrend
-	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string) (model.DataTimeTrend, error)); ok {
-		return rf(ctx, key)
-	}
-	if rf, ok := ret.Get(0).(func(context.Context, string) model.DataTimeTrend); ok {
-		r0 = rf(ctx, key)
-	} else {
-		r0 = ret.Get(0).(model.DataTimeTrend)
-	}
-
-	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
-		r1 = rf(ctx, key)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
-// cacheSetDataTrend provides a mock function with given fields: ctx, req, value
-func (_m *MockHandler) cacheSetDataTrend(ctx context.Context, req model.RequestCheck, value model.DataTimeTrend) {
-	_m.Called(ctx, req, value)
-}
-
-// calculateRPS provides a mock function with given fields: timeTrend
-func (_m *MockHandler) calculateRPS(timeTrend map[int64]int64) int64 {
-	ret := _m.Called(timeTrend)
-
-	var r0 int64
-	if rf, ok := ret.Get(0).(func(map[int64]int64) int64); ok {
-		r0 = rf(timeTrend)
-	} else {
-		r0 = ret.Get(0).(int64)
-	}
-
-	return r0
-}
-
-// generateKey provides a mock function with given fields: ctx, key
-func (_m *MockHandler) generateKey(ctx context.Context, key string) string {
-	ret := _m.Called(ctx, key)
-
-	var r0 string
-	if rf, ok := ret.Get(0).(func(context.Context, string) string); ok {
-		r0 = rf(ctx, key)
-	} else {
-		r0 = ret.Get(0).(string)
-	}
-
-	return r0
-}
-
 type mockConstructorTestingTNewMockHandler interface {
 	mock.TestingT
 	Cleanup(func())
