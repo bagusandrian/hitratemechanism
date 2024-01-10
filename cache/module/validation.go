@@ -9,58 +9,52 @@ import (
 
 func (u *usecase) CacheValidateTrend(ctx context.Context, req m.RequestCheck) (resp m.Response) {
 	now := time.Now()
-	successMessage := "no need set again on local cache, already reach threshold!"
-	data := u.cacheGetDataTrend(ctx, req.Key)
-	if data.ReachThresholdRPS {
-		return m.Response{
-			ResponseTime:   time.Since(now).String(),
-			SuccessMessage: successMessage,
-			Error:          nil,
-			DataTimeTrend:  data,
+	dataKeys := make(map[string]m.DataTimeTrend)
+	for _, key := range req.Keys {
+		data := u.cacheGetDataTrend(ctx, key)
+		if data.ReachThresholdRPS {
+			dataKeys[key] = data
+			continue
 		}
-	}
-	if len(data.TimeTrend) > 2 {
-		data.EstimateRPS = u.calculateRPS(data.TimeTrend)
-	}
-	data.ThresholdRPS = req.ThresholdRPS
-	data.LimitTrend = u.Conf.LimitTrend
-	if len(data.TimeTrend) < u.Conf.LimitTrend {
-		for i := int64(0); i <= int64(u.Conf.LimitTrend-1); i++ {
-			if _, exist := data.TimeTrend[i]; exist {
-				continue
-			} else {
-				data.TimeTrend[i] = time.Now().UnixMilli()
-				break
-			}
+		if len(data.TimeTrend) > 2 {
+			data.EstimateRPS = u.calculateRPS(data.TimeTrend)
 		}
-		u.cacheSetDataTrend(ctx, req, data)
-		return m.Response{
-			ResponseTime:   time.Since(now).String(),
-			SuccessMessage: "",
-			Error:          nil,
-			DataTimeTrend:  data,
-		}
-	} else {
-		if !data.ReachThresholdRPS {
-			for i := int64(0); i <= int64(data.LimitTrend-1); i++ {
-				if i <= 3 {
-					data.TimeTrend[i] = data.TimeTrend[i+1]
+		data.ThresholdRPS = req.ThresholdRPS
+		data.LimitTrend = u.Conf.LimitTrend
+		if len(data.TimeTrend) < u.Conf.LimitTrend {
+			for i := int64(0); i <= int64(u.Conf.LimitTrend-1); i++ {
+				if _, exist := data.TimeTrend[i]; exist {
+					continue
 				} else {
 					data.TimeTrend[i] = time.Now().UnixMilli()
+					break
 				}
 			}
-			if data.EstimateRPS > req.ThresholdRPS {
-				data.ReachThresholdRPS = true
-			}
-			u.cacheSetDataTrend(ctx, req, data)
+			u.cacheSetDataTrend(ctx, key, req.TTLCache, data)
+		} else {
+			if !data.ReachThresholdRPS {
+				for i := int64(0); i <= int64(data.LimitTrend-1); i++ {
+					if i <= 3 {
+						data.TimeTrend[i] = data.TimeTrend[i+1]
+					} else {
+						data.TimeTrend[i] = time.Now().UnixMilli()
+					}
+				}
+				if data.EstimateRPS > req.ThresholdRPS {
+					data.ReachThresholdRPS = true
+				}
+				u.cacheSetDataTrend(ctx, key, req.TTLCache, data)
 
+			}
 		}
+		dataKeys[key] = data
 	}
+
 	return m.Response{
 		ResponseTime:   time.Since(now).String(),
-		SuccessMessage: successMessage,
+		SuccessMessage: "",
 		Error:          nil,
-		DataTimeTrend:  data,
+		DataKeys:       dataKeys,
 	}
 }
 
@@ -75,14 +69,14 @@ func (u *usecase) cacheGetDataTrend(ctx context.Context, key string) (result m.D
 	return result
 }
 
-func (u *usecase) cacheSetDataTrend(ctx context.Context, req m.RequestCheck, value m.DataTimeTrend) {
+func (u *usecase) cacheSetDataTrend(ctx context.Context, key string, ttlCache time.Duration, value m.DataTimeTrend) {
 	var TTL time.Duration
-	if req.TTLCache > 0 {
-		TTL = req.TTLCache
+	if ttlCache > 0 {
+		TTL = ttlCache
 	} else {
 		TTL = u.Conf.DefaultExpiration
 	}
-	u.GoCache.SetWithTTL(u.generateKey(ctx, req.Key), value, TTL)
+	u.GoCache.SetWithTTL(u.generateKey(ctx, key), value, TTL)
 }
 
 func (u *usecase) calculateRPS(timeTrend map[int64]int64) int64 {

@@ -2,16 +2,12 @@ package model
 
 import (
 	"time"
-
-	"github.com/redis/rueidis"
 )
 
 type (
 	// config for setup HRM
 	HitRateMechanism struct {
-		Config      Config
-		Redis       rueidis.Client
-		RedisConfig rueidis.ClientOption
+		Config Config
 	}
 	Config struct {
 		// MaxMemoryUsage u can set max memory usage, by default will set as 128Mb
