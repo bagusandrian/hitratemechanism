@@ -35,5 +35,30 @@ Follow these steps to integrate the library into your Redis-based application:
 			TTLCache:     60 * time.Second,
 		})
 		log.Printf("response of HRM: %+v\n", resp)
+	//	{
+	//		"response_time": "20ms",
+	//		"data_time_trend": {
+	//			"reach_threshold_rps": true,
+	//			"time_trend": {
+	//				"1": {
+	//					0: 1234567,
+	//					1: 1234580,
+	//					2: 1234600,
+	//					3: 1234620,
+	//					4: 1234640
+	//				},
+	//				"2": {
+	//					0: 1234567,
+	//					1: 1234580,
+	//					2: 1234600,
+	//					3: 1234620,
+	//					4: 1234640
+	//				},
+	//		},
+	//			"estimate_rps": 100,
+	//			"threshold_rps": 2,
+	//			"limit_trend": 5
+	//		}
+	//	}
 	}
 	```
